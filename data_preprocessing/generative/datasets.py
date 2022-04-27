@@ -13,11 +13,6 @@ import torchvision.transforms as transforms
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp')
 
 
-# LABELED_DATASET = (
-#     "style_GAN_init",
-#     "style_GAN_init_64"
-# )
-
 
 
 def data_transforms_generative(resize=None, augmentation="default", dataset_type="full_dataset",
@@ -168,15 +163,7 @@ class GenerativeDataset(data.Dataset):
         self.args = args
         self.dataset_name = dataset_name
 
-        if dataset_name in ["style_GAN_init", "style_GAN_init_64", "style_GAN_init_32_c62", "Gaussian_Noise",
-                            "cifar_conv_decoder",
-                            "style_GAN_init_32_c100","style_GAN_init_64_c200"]:
-            self.labeled = True
-        else:
-            raise NotImplementedError
-            # self.labeled = False
-            # self.class_num = 0
-            # self.classes = 1
+        self.labeled = True
 
         self.image_resolution = image_resolution
 

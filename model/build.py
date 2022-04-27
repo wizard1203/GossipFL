@@ -51,13 +51,6 @@ def create_model(args, model_name, output_dim, pretrained=False, **kwargs):
     model = None
     logging.info(f"model name: {model_name}")
 
-    if args.fed_noise:
-        if args.fed_noise_label_style == "extra":
-            output_dim = output_dim + args.fed_noise_num
-            logging.info(f"Model output dim is changed into {output_dim}, original is {output_dim - args.fed_noise_num}")
-        else:
-            pass
-
     if model_name in RNN_MODEL_LIST:
         pass
     else:

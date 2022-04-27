@@ -330,52 +330,6 @@ class ResNet(nn.Module):
             return out
 
 
-    def reprogram_forward(self, x, features=None):
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.maxpool(out)
-
-        out = self.layer1(out)
-        if "resnet-layer1" in features:
-            out = out + features["resnet-layer4"]
-        if self.args.model_out_feature and self.args.model_out_feature_layer == "resnet-layer1":
-            feat = out.view(out.size(0), -1) * 1.0
-            # logging.debug(f"Output feat after layer 1. feat shape: {feat.shape}, out.shape: {out.shape}")
-
-        out = self.layer2(out)
-        if "resnet-layer2" in features:
-            out = out + features["resnet-layer4"]
-        if self.args.model_out_feature and self.args.model_out_feature_layer == "resnet-layer2":
-            feat = out.view(out.size(0), -1) * 1.0
-            # logging.debug(f"Output feat after layer 2. feat shape: {feat.shape}, out.shape: {out.shape}")
-
-        out = self.layer3(out)
-        if "resnet-layer3" in features:
-            out = out + features["resnet-layer4"]
-        if self.args.model_out_feature and self.args.model_out_feature_layer == "resnet-layer3":
-            feat = out.view(out.size(0), -1) * 1.0
-            # logging.debug(f"Output feat after layer 3. feat shape: {feat.shape}, out.shape: {out.shape}")
-
-        out = self.layer4(out)
-        logging.debug(f"Output feat after layer 4. out.shape: {out.shape}")
-        if "resnet-layer4" in features:
-            out = out + features["resnet-layer4"]
-        if self.args.model_out_feature and self.args.model_out_feature_layer == "resnet-layer4":
-            feat = out.view(out.size(0), -1) * 1.0
-            # logging.debug(f"Output feat after layer 4. feat shape: {feat.shape}, out.shape: {out.shape}")
-        # out = F.avg_pool2d(out, 4)
-
-        out = self.avgpool(out)
-        if self.args.model_out_feature and self.args.model_out_feature_layer == "last":
-            # feat = out
-            feat = out.view(out.size(0), -1) * 1.0
-            # logging.debug(f"Output feat before last layer. feat shape: {feat.shape}, out.shape: {out.shape}")
-        out = self.fc(out.view(out.size(0), -1))
-
-        if self.args.model_out_feature:
-            return out, feat
-        else:
-            return out
-
 
 
 

@@ -333,11 +333,6 @@ class InceptionResNetV2(nn.Module):
         x = self.logits(x)
         return x
 
-    def reprogram_forward(self, input, features=None):
-        x = self.features(input)
-        x = self.logits(x)
-        return x
-
 
 # def inceptionresnetv2(num_classes=1000, pretrained='imagenet'):
 def inceptionresnetv2(args=None, num_classes=1000, image_size=299,

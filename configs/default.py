@@ -238,19 +238,6 @@ _C.generative_dataset_grayscale = False           # Gray Scale
 # datanum2others is not considerred for now.
 _C.fedavg_avg_weight_type = 'datanum'   
 
-# Friendly Averaging
-_C.friend_avg = False
-_C.friend_avg_crt = "E_grad_pow2_aprx"   #   Criteria: ['V_grad_aprx','E_grad_pow2_aprx','']
-_C.friend_avg_layers = []           # Indicate apply friend avg on which layers, or all. 
-_C.friend_avg_min_crt = 1e-6
-_C.friend_avg_normalize = "minmax"   #  max, min_limit, no, 
-_C.friend_avg_temperature = 0.001
-_C.friend_avg_rand_pertub = 0.01     #  friend_avg_rand_pertub
-
-
-
-
-
 
 # ---------------------------------------------------------------------------- #
 # Dif local steps

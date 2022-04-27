@@ -19,47 +19,6 @@ GENERATIVE_DATASET_LIST = []
 
 class Generative_Data_Loader(Data_Loader):
 
-    full_data_obj_dict = {
-        "style_GAN_init": GenerativeDataset,
-        "style_GAN_init_32_c100": GenerativeDataset,
-        "style_GAN_init_64_c200": GenerativeDataset,
-        "Gaussian_Noise": GenerativeDataset,
-        "cifar_conv_decoder": GenerativeDataset,
-    } 
-
-    sub_data_obj_dict = {
-        "style_GAN_init": GenerativeDataset,
-        "style_GAN_init_32_c100": GenerativeDataset,
-        "style_GAN_init_64_c200": GenerativeDataset,
-        "Gaussian_Noise": GenerativeDataset,
-        "cifar_conv_decoder": GenerativeDataset,
-    } 
-
-    transform_dict = {
-        "style_GAN_init": data_transforms_generative,
-        "style_GAN_init_32_c100": data_transforms_generative,
-        "style_GAN_init_64_c200": data_transforms_generative,
-        "Gaussian_Noise": data_transforms_generative,
-        "cifar_conv_decoder": data_transforms_generative,
-    }
-
-    num_classes_dict = {
-        "style_GAN_init": 10,
-        "style_GAN_init_32_c100": 100,
-        "style_GAN_init_64_c200": 200,
-        "Gaussian_Noise": 10,
-        "cifar_conv_decoder": 10,
-    }
-
-
-    image_resolution_dict = {
-        "style_GAN_init": 32,
-        "style_GAN_init_32_c100": 32,
-        "style_GAN_init_64_c200": 64,
-        "Gaussian_Noise": 32,
-        "cifar_conv_decoder": 32,
-    }
-
 
     def __init__(self, args=None, process_id=0, mode="centralized", task="centralized",
                 data_efficient_load=True, dirichlet_balance=False, dirichlet_min_p=None,
