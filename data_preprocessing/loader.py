@@ -144,11 +144,16 @@ class Data_Loader(object):
     def load_data(self):
         # Refered methods can be re-implemented by other data loader.
         if self.task == "federated":
-            if self.mode == "distributed":
+            if self.mode == "PS-distributed":  
+                self.rank = max(0, self.process_id - 1)
+                self.federated_distributed_split()
+            elif self.mode == "Gossip-distributed":
+                self.rank = self.process_id
                 self.federated_distributed_split()
             elif self.mode == "standalone":
                 self.federated_standalone_split()
             else:
+                logging.info(f"Mode is {self.mode}")
                 raise NotImplementedError
         elif self.task == "distributed":
             if self.mode == "PS-distributed":
@@ -248,7 +253,45 @@ class Data_Loader(object):
 
     # federated loading 
     def federated_distributed_split(self):
-        raise NotImplementedError
+        # For cifar10, cifar100, SVHN, FMNIST
+        train_ds, test_ds = self.load_full_data()
+        # y_train = train_ds.targets
+        # y_train_np = np.array(y_train)
+        y_train_np = self.get_y_train_np(train_ds)
+        # class_num = len(np.unique(y_train))
+        self.train_data_num = y_train_np.shape[0]
+        self.net_dataidx_map, self.traindata_cls_counts = self.partition_data(y_train_np, self.train_data_num)
+        logging.info("traindata_cls_counts = " + str(self.traindata_cls_counts))
+        self.train_data_num = sum([len(self.net_dataidx_map[r]) for r in range(self.client_number)])
+
+        self.train_data_global, self.test_data_global = self.get_dataloader(
+                train_ds, test_ds,
+                shuffle=True, drop_last=False, train_sampler=None, num_workers=self.num_workers)
+        logging.info("train_dl_global number = " + str(len(self.train_data_global)))
+        logging.info("test_dl_global number = " + str(len(self.test_data_global)))
+        self.test_data_num = len(self.test_data_global)
+
+        self.data_local_num_dict = dict()
+        self.train_data_local_dict = dict()
+        self.test_data_local_dict = dict()
+
+        for client_index in range(self.client_number):
+            train_ds_local, test_ds_local, local_data_num = self.load_sub_data(client_index, train_ds, test_ds)
+            self.data_local_num_dict[client_index] = local_data_num
+            logging.info("client_index = %d, local_sample_number = %d" % (client_index, local_data_num))
+
+            train_sampler = self.get_train_sampler(train_ds_local, rank=client_index, distributed=False)
+            shuffle = train_sampler is None
+
+            # training batch size = 64; algorithms batch size = 32
+            train_data_local, test_data_local = self.get_dataloader(
+                    train_ds_local, test_ds_local,
+                    shuffle=shuffle, drop_last=False, train_sampler=train_sampler, num_workers=self.num_workers)
+            logging.info("client_index = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
+                client_index, len(train_data_local), len(test_data_local)))
+            self.train_data_local_dict[client_index] = train_data_local
+            self.test_data_local_dict[client_index] = test_data_local
+
 
 
     def federated_standalone_split(self):

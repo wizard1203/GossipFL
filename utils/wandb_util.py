@@ -32,15 +32,6 @@ def wandb_log(prefix, sp_values, com_values, update_summary=False, wandb_summary
     wandb.log(new_values)
 
 
-
-# def upload_metric_info(str_pre, train_metric_info, test_metric_info, metrics, comm_values):
-#     logging.info(str_pre + 'Train: ' + metrics.str_fn(train_metric_info))
-#     logging.info(str_pre + 'Test: ' + metrics.str_fn(test_metric_info))
-
-#     wandb_log(prefix='Train', sp_values=train_metric_info, com_values=comm_values)
-#     wandb_log(prefix='Test', sp_values=test_metric_info, com_values=comm_values)
-
-
 def delete_output_log(path=""):
     api = wandb.Api()
     runs = api.runs(path)

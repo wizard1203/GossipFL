@@ -3,36 +3,21 @@
 export entity="hpml-hkbu"
 export project="gossipfl"
 
-export cluster_name="scigpu"
+export cluster_name="gpuhome"
 
+export PS_MPI_HOST="gpu17:5"
+export PS_GPU_MAPPINGS="gpu17:3,2"
 
+export FEDAVG_MPI_HOST="gpu17:3"
+export FEDAVG_GPU_MAPPINGS="gpu17:1,1"
 
+export GOSSIP_MPI_HOST="gpu17:4"
+export GOSSIP_GPU_MAPPINGS="gpu17:2,2"
 
-# export PS_MPI_HOST="scigpu12:15"
-# export PS_GPU_MAPPINGS="scigpu12:4,4,4,3"
+export wandb_record=False
+export level=DEBUG 
 
-# export FEDAVG_MPI_HOST="scigpu12:8"
-# export FEDAVG_GPU_MAPPINGS="scigpu12:2,2,2,2"
-
-# export GOSSIP_MPI_HOST="scigpu12:14"
-# # export GOSSIP_GPU_MAPPINGS="scigpu12:4,4,3,3"
-# export GOSSIP_GPU_MAPPINGS="scigpu12:4,5,5,0"
-
-
-
-export PS_MPI_HOST="scigpu10:15"
-export PS_GPU_MAPPINGS="scigpu10:4,4,4,3"
-
-export FEDAVG_MPI_HOST="scigpu10:8"
-export FEDAVG_GPU_MAPPINGS="scigpu10:2,2,2,2"
-
-export GOSSIP_MPI_HOST="scigpu10:14"
-# export GOSSIP_GPU_MAPPINGS="scigpu12:4,4,3,3"
-export GOSSIP_GPU_MAPPINGS="scigpu10:4,4,3,3"
-
-
-
-export NWORKERS=14
+export NWORKERS=4
 
 
 # export dataset="ptb"
@@ -98,18 +83,17 @@ lrs=(0.1)
 
 for lr in "${lrs[@]}"
 do
-     # lr=$lr partition_alpha=$partition_alpha algorithm="PSGD" bash ./launch_mpi_based.sh
-     # lr=$lr partition_alpha=$partition_alpha algorithm="PSGD" compression=eftopk compress_ratio=0.01      bash ./launch_mpi_based.sh
-     # lr=$lr partition_alpha=$partition_alpha algorithm="FedAvg" compression=no  epochs=1   momentum=0.0          bash ./launch_mpi_based.sh
-     # lr=$lr partition_alpha=$partition_alpha algorithm="FedAvg" compression=topk compress_ratio=0.25  epochs=1 \
-     #      momentum=0.0          bash ./launch_mpi_based.sh
-     # lr=$lr partition_alpha=$partition_alpha algorithm="DPSGD"             bash ./launch_mpi_based.sh
-     lr=$lr partition_alpha=$partition_alpha algorithm="SAPS_FL" compress_ratio=0.25 \
-               bash ./launch_mpi_based.sh
-     lr=$lr partition_alpha=$partition_alpha algorithm="CHOCO_SGD"  compress_ratio=0.25 \
-               bash ./launch_mpi_based.sh
-     # lr=$lr partition_alpha=$partition_alpha algorithm="DCD_PSGD"          bash ./launch_mpi_based.sh
-
+    # lr=$lr partition_alpha=$partition_alpha algorithm="PSGD" bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="PSGD" compression=eftopk compress_ratio=0.01      bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="FedAvg" compression=no  epochs=1   momentum=0.0          bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="FedAvg" compression=topk compress_ratio=0.25  epochs=1 \
+    #      momentum=0.0          bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="DPSGD"             bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="SAPS_FL" compress_ratio=0.1 \
+    #         bash ./launch_mpi_based.sh
+    lr=$lr partition_alpha=$partition_alpha algorithm="CHOCO_SGD"  compress_ratio=0.1 \
+            bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="DCD_PSGD"          bash ./launch_mpi_based.sh
 done
 
 

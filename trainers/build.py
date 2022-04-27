@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
 
 from .normal_trainer import NormalTrainer
-from .lstmpy_trainer import LSTMTrainer
 
 from optim.build import create_optimizer
 from loss_fn.build import create_loss

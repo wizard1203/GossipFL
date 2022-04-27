@@ -148,7 +148,7 @@ if __name__ == "__main__":
         if cfg.gpu_util_parse is not None:
             device, gpu_util_map = init_training_device_from_gpu_util_parse(process_id, worker_number, cfg.gpu_util_parse)
         else:
-            device, gpu_util_map = init_training_device_from_gpu_util_file(process_id, worker_number, cfg.gpu_util_file, cfg.gpu_util_key)
+            raise NotImplementedError
 
         # load data
         # dataset = load_data(cfg, cfg.dataset)
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         else:
             task = "federated"
 
-        if cfg.algorithm in ['FedAvg', 'AFedAvg', 'PSGD', 'APSGD', 'Local_PSGD', 'FedSGD']:
+        if cfg.algorithm in ['FedAvg', 'PSGD']:
             mode = "PS-distributed"
         elif cfg.algorithm in ['DPSGD', 'DCD_PSGD', 'CHOCO_SGD', 'SAPS_FL']:
             mode = "Gossip-distributed"
