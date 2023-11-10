@@ -55,8 +55,8 @@ export lr=0.04
 #      momentum=0.0          bash ./launch_mpi_based.sh
 # lr=$lr algorithm="DPSGD"             bash ./launch_mpi_based.sh
 # lr=$lr algorithm="DCD_PSGD"          bash ./launch_mpi_based.sh
-# lr=$lr algorithm="CHOCO_SGD"         bash ./launch_mpi_based.sh
-lr=$lr algorithm="SAPS_FL"           bash ./launch_mpi_based.sh
+lr=$lr algorithm="CHOCO_SGD"         bash ./launch_mpi_based.sh
+# lr=$lr algorithm="SAPS_FL"           bash ./launch_mpi_based.sh
 
 
 
