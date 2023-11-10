@@ -26,14 +26,15 @@ export NWORKERS=4
 # export trainer_type="lstm"
 
 
-# export dataset="mnist"
-# export model="mnistflnet"
+export dataset="mnist"
+export model="mnistflnet"
+export model_input_channels=1
 
-export dataset="cifar10"
+# export dataset="cifar10"
 # export model="cifar10flnet"
 # lrs=(0.04)
 
-export model="resnet20"
+# export model="resnet20"
 
 
 
@@ -91,9 +92,9 @@ do
     # lr=$lr partition_alpha=$partition_alpha algorithm="DPSGD"             bash ./launch_mpi_based.sh
     # lr=$lr partition_alpha=$partition_alpha algorithm="SAPS_FL" compress_ratio=0.1 \
     #         bash ./launch_mpi_based.sh
-    lr=$lr partition_alpha=$partition_alpha algorithm="CHOCO_SGD"  compress_ratio=0.1 \
-            bash ./launch_mpi_based.sh
-    # lr=$lr partition_alpha=$partition_alpha algorithm="DCD_PSGD"          bash ./launch_mpi_based.sh
+    # lr=$lr partition_alpha=$partition_alpha algorithm="CHOCO_SGD"  compress_ratio=0.1 \
+    #         bash ./launch_mpi_based.sh
+    lr=$lr partition_alpha=$partition_alpha algorithm="DCD_PSGD"          bash ./launch_mpi_based.sh
 done
 
 
