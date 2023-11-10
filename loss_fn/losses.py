@@ -1,11 +1,9 @@
 import math
-import logging
-import time
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import logging
 
 from utils.data_utils import get_per_cls_weights
 
@@ -118,49 +116,7 @@ class LDAMLoss(nn.Module):
     #     return F.cross_entropy(self.s*output, target, weight=input_weight)
 
 
-def linear_combination(x, y, epsilon):  
-    return epsilon*x + (1-epsilon)*y
-
-def reduce_loss(loss, reduction='mean'): 
-    return loss.mean() if reduction=='mean' else loss.sum() if reduction=='sum' else loss 
-
-class LabelSmoothingCrossEntropy(nn.Module): 
-    def __init__(self, epsilon:float=0.1, reduction='mean'): 
-        super().__init__() 
-        self.epsilon = epsilon 
-        self.reduction = reduction 
-
-    def forward(self, preds, target): 
-        n = preds.size()[-1] 
-        log_preds = F.log_softmax(preds, dim=-1) 
-        loss = reduce_loss(-log_preds.sum(dim=-1), self.reduction) 
-        nll = F.nll_loss(log_preds, target, reduction=self.reduction) 
-        return linear_combination(loss/n, nll, self.epsilon)
 
 
 
 
-
-
-
-def cross_pair_norm(src_labels, src_features, tgt_labels, tgt_features):
-    norm = 0
-    count = 0
-    for i in range(len(src_labels)):
-        for j in range(len(tgt_labels)):
-            if src_labels[i] == tgt_labels[j]:
-                count += 1
-                norm += torch.linalg.norm(src_features[i] - tgt_features[j], ord=2, dim=0).sum()
-    return norm / count
-
-
-
-def pair_norm(labels, features):
-    norm = 0
-    count = 0
-    for i in range(len(labels)):
-        for j in range(i + 1, len(labels)):
-            if labels[i] == labels[j]:
-                count += 1
-                norm += torch.linalg.norm(features[i] - features[j], ord=2, dim=0).sum()
-    return norm / count

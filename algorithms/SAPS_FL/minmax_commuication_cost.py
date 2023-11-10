@@ -3,11 +3,8 @@ import numpy as np
 import copy
 from collections import deque
 
-import networkx as nx
-
 from .utils import Bandwidth_Decrease_Factor
 
-from .hamiltonCycleHeuristic import hamiltonCycle
 
 def hasPath(Gf, s, t, path):
     # BFS algorithm
@@ -640,75 +637,10 @@ def get_ring_match_and_bandwidth(bandwidth, workers):
                 ring_bandwidth_threshold = bandwidth[i][j]
     return ring_match, ring_bandwidth_threshold
 
-
-def build_nx_graph(bandwidth, ring_bandwidth_threshold):
-    print(bandwidth)
-    bandwidth_new = np.zeros(bandwidth.shape)
-    bandwidth_new[bandwidth > ring_bandwidth_threshold] = 1
-    print(bandwidth_new)
-    # print(bandwidth_new)
-    G =  nx.DiGraph(bandwidth_new)
-    # print(G)
-    return G
-
-def hamilton(G):
-    F = [(G,[list(G.nodes())[0]])]
-    n = G.number_of_nodes()
-    while F:
-        graph,path = F.pop()
-        confs = []
-        neighbors = (node for node in graph.neighbors(path[-1]) 
-                     if node != path[-1]) #exclude self loops
-        for neighbor in neighbors:
-            conf_p = path[:]
-            conf_p.append(neighbor)
-            conf_g = nx.Graph(graph)
-            conf_g.remove_node(path[-1])
-            confs.append((conf_g,conf_p))
-        for g,p in confs:
-            if len(p)==n:
-                return p
-            else:
-                F.append((g,p))
-    return None
-
-def get_ring_match_and_bandwidth_optimum(bandwidth, workers, epsilon=0.01):
-
-    bandwidth_min = bandwidth.min()
-    bandwidth_max = bandwidth.max()
-
-    left = bandwidth_min
-    right = bandwidth_max
-    middle = bandwidth_min + (bandwidth_max - bandwidth_min) / 2 
-
-    precision = (bandwidth_max - bandwidth_min) * epsilon
-    path = None
-    # while abs(middle - left) <  precision or abs(middle - right) <  precision:
-    while abs(right - left) > precision:
-        print("Finding zone: [{}, {}]".format(left, right))
-        bandwidth_new = build_nx_graph(bandwidth, ring_bandwidth_threshold=middle)
-        # print(bandwidth_new)
-        # path = hamilton(bandwidth_new)
-        path = hamiltonCycle(bandwidth_new, 0)
-        if path is None:
-            print("Not Find hamilton")
-            right = middle
-        else:
-            print("Find hamilton")
-            save_path = copy.deepcopy(path)
-            left = middle
-        middle = left + (right - left) / 2
-
-    bandwidth_threshold = left
-    return save_path, bandwidth_threshold
-
-
-def get_FedAVG_match_and_bandwidth(bandwidth, workers, choose_clients_num=None):
+def get_FedAVG_match_and_bandwidth(bandwidth, workers):
 
     min_raws = {}
-    # print(bandwidth)
-    # print(bandwidth[0])
-    # print(bandwidth[0][1])
+
     for i in range(workers):
         min_raws[i] = 5000
         for j in range(workers):
@@ -722,22 +654,24 @@ def get_FedAVG_match_and_bandwidth(bandwidth, workers, choose_clients_num=None):
             server_rank = i
             max_in_raws = min_raws[i]
 
-    if choose_clients_num is not None:
-        pass
-    else:
-        choose_clients_num = workers / 2
 
-    choose_list = np.array(range(workers))
-
-    # at server rank the bandwidth is set as 0.
-    choose_list = np.delete(choose_list, server_rank)
-
-    np.random.shuffle(choose_list)
-    chosen_clients = choose_list[:choose_clients_num]
-    chosen_clients_bandwidth = bandwidth[server_rank][chosen_clients]
-    bandwidth_threshold = min(chosen_clients_bandwidth)
-
-    return None, bandwidth_threshold
+    index_roles = np.arange(workers)
+    np.random.shuffle(index_roles)
+    choose_clients = index_roles[0:int(workers/2)]
+    # print("choose_server:", server_rank)
+    random_match = {}
+    for i in range(workers):
+        random_match[i] = []
+    random_bandwidth_threshold = 100
+    for i in choose_clients:
+        if i != server_rank:
+            random_match[server_rank].append(i)
+            random_match[i].append(server_rank)
+        else:
+            random_match[server_rank].append(i)
+        if random_bandwidth_threshold > bandwidth[server_rank][i] and server_rank!=i:
+            random_bandwidth_threshold = bandwidth[server_rank][i]
+    return random_match, random_bandwidth_threshold
 
 
 def random_bandwidth(workers):

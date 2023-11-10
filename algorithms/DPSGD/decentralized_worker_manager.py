@@ -15,21 +15,22 @@ from algorithms.baseDecent.decentralized_worker_manager import BaseDecentralized
 
 from .message_define import MyMessage
 
-from mpi4py import MPI
-
 
 from utils.context import (
     raise_MPI_error,
     raise_error_without_process,
     get_lock,
 )
-
+from utils.timer import Timer
+from utils.tracker import RuntimeTracker
+from utils.metrics import Metrics
+from utils.wandb_util import wandb_log
 
 comm = MPI.COMM_WORLD
 
 class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
-    def __init__(self, args, comm, rank, size, worker, topology_manager, model_trainer, perf_timer, metrics):
-        super().__init__(args, comm, rank, size, worker, topology_manager, model_trainer, perf_timer, metrics)
+    def __init__(self, args, comm, rank, size, worker, topology_manager, model_trainer, timer, metrics):
+        super().__init__(args, comm, rank, size, worker, topology_manager, model_trainer, timer, metrics)
         # ====================================
         self.training_thread = threading.Thread(name='training', target=self.run_sync)
 
@@ -49,7 +50,7 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
         time.sleep(1)
         logging.debug("MPI exit barrier!")
 
-        if self.client_index == 0:
+        if self.worker_index == 0:
             logging.debug("COORDINATOR notify clients to start!")
             self.coodinator_thread.start()
             self.notify_clients()
@@ -57,18 +58,21 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
     def register_message_receive_handlers(self):
         self.register_message_receive_handler(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR,
-                                            self.handle_msg_from_neighbor)
+                                              self.handle_msg_from_neighbor)
         self.register_message_receive_handler(MyMessage.MSG_TYPE_CLIENT_TO_COORDINATOR,
-                                            self.handle_msg_client_to_coordinator)
+                                              self.handle_msg_client_to_coordinator)
         self.register_message_receive_handler(MyMessage.MSG_TYPE_COORDINATOR_TO_CLIENT,
-                                            self.handle_msg_coordinator_to_client)
+                                              self.handle_msg_coordinator_to_client)
 
+    # def start_training(self):
+    #     self.global_round_idx = 0
+    #     self.__train()
 
+    # TODO
     def handle_msg_from_neighbor(self, msg_params):
         sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
-        training_interation_result = msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS)
+        training_interation_result = msg_params.get(MyMessage.MSG_ARG_KEY_PARAMS_1)
         local_sample_number = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
-        client_other_params = msg_params.get(MyMessage.MSG_ARG_KEY_CLIENT_OTHER_PARAMS)
 
         # =========================== wait for complete aggregation
         logging.debug("Rank %d receive Rank %d message, wait for complete aggregation" %
@@ -81,40 +85,44 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
         self.worker.add_result(sender_id, training_interation_result)
         if self.neighbor_transfer_lock.locked():
             self.neighbor_transfer_lock.release()
-        self.client_check_whether_all_receive_and_process()
+        if self.worker.check_whether_all_receive():
+            logging.debug(">>>>>>>>>>>>>>>WORKER %d, ROUND %d finished!<<<<<<<<" % (self.worker_index, self.global_round_idx))
+            self.global_round_idx += 1
 
+            # not needed in run_async 
+            self.sync_receive_all_event.set()
+            if self.global_round_idx == self.comm_round:
+                self.finish()
+            # self.__train()
 
 
     def run_sync(self):
-        with raise_MPI_error(MPI):
-            for _ in range(self.args.max_epochs):
+        with raise_MPI_error():
+            for epoch in range(self.epochs):
+                self.epoch = epoch
 
                 # update worker's dataset and data loader
                 with raise_error_without_process():
-                    self.worker.train_local.sampler.set_epoch(self.client_timer.local_outer_epoch_idx)
+                    self.worker.train_local.sampler.set_epoch(epoch)
                 # self.worker.update_dataset()
                 self.epoch_init()
 
-                for _ in range(self.worker.global_num_iterations):
-
+                for iteration in range(self.worker.num_iterations):
+                    self.iteration = iteration
                     logging.debug("wait start_epoch_event")
                     # self.start_epoch_event.set()
                     self.start_epoch_event.wait()
 
-                    self.lr_schedule(self.worker.global_num_iterations, self.args.warmup_epochs)
+                    self.lr_schedule(self.epoch, self.iteration, self.global_round_idx,
+                                     self.worker.num_iterations, self.args.warmup_epochs)
                     if self.args.Failure_chance is not None and np.random.rand(1) < self.args.Failure_chance:
                         logging.info("Communication Failure happens on worker: {}, Failure_chance: {}".format(
-                            self.client_index, self.args.Failure_chance))
+                            self.worker_index, self.args.Failure_chance))
                         # aggregated_model_params = self.worker.get_model_params()
                     else:
                         loss, output, target \
-                            = self.worker.train_one_step(
-                                self.client_timer.local_outer_epoch_idx,
-                                self.client_timer.local_inner_iter_idx,
-                                self.check_end_epoch(),
-                                self.train_tracker,
-                                self.metrics
-                            )
+                            = self.worker.train_one_step(self.epoch, self.iteration,
+                                                            self.train_tracker, self.metrics)
                     local_sample_number = self.worker.local_sample_number
                     # batch_metric_stat = self.metrics.evaluate(loss, output, target)
                     # self.train_tracker.update_metrics(batch_metric_stat, n_samples=target.size(0))
@@ -124,10 +132,9 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
                     logging.debug("Begin send and receive")
                     # if not self.sync_receive_all_event.is_set():
                     #     self.sync_receive_all_event.clear()
-                    client_other_params = {}
-                    for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.client_index):
+                    for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.worker_index):
                         self.send_result_to_neighbors(neighbor_idx, self.model_trainer.get_model_params(),
-                                                    local_sample_number, client_other_params)
+                                                      local_sample_number)
                     # wait for receiving all
                     self.sync_receive_all_event.wait()
 
@@ -147,13 +154,12 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
                     self.start_epoch_event.clear()
                     self.sync_receive_all_event.clear()
 
-                    client_other_params = {}
-                    self.test_and_send_to_coordinator(client_other_params)
-                    self.client_timer.past_iterations(iterations=1)
+                    self.test_and_send_to_coordinator(iteration, epoch)
+
                 # self.model_trainer.lr_schedule(epoch+1)
 
     def run_consensus(self):
-        with raise_MPI_error(MPI):
+        with raise_MPI_error():
             self.consensus_tensor = torch.ones([10]) * self.rank
             for iteration in range(500):
                 logging.debug("wait start_epoch_event")
@@ -161,9 +167,9 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
                 # begin to send model
                 logging.debug("Begin send and receive")
-                client_other_params = {}
-                for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.client_index):
-                    self.send_result_to_neighbors(neighbor_idx, self.consensus_tensor, 0, client_other_params)
+
+                for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.worker_index):
+                    self.send_result_to_neighbors(neighbor_idx, self.consensus_tensor, 0)
                 # wait for receiving all
                 self.sync_receive_all_event.wait()
 
@@ -203,8 +209,7 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
         # this event is actually not used in async
         self.complete_aggregation_event.set()
-        client_other_params = {}
-        for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.client_index):
-            self.send_result_to_neighbors(neighbor_idx, aggregated_model_params, local_sample_number, client_other_params)
+        for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.worker_index):
+            self.send_result_to_neighbors(neighbor_idx, aggregated_model_params, local_sample_number)
 
 

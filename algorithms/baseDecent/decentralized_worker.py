@@ -14,13 +14,15 @@ from utils.data_utils import (
     get_avg_num_iterations
 )
 
+from utils.timer import Timer
+
 
 class BaseDecentralizedWorker(object):
-    def __init__(self, client_index, topology_manager, train_data_global, test_data_global, train_data_num,
-                train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                device, model, args, model_trainer, perf_timer, metrics):
-        self.client_index = client_index
-        self.in_neighbor_idx_list = topology_manager.get_in_neighbor_idx_list(self.client_index)
+    def __init__(self, worker_index, topology_manager, train_data_global, test_data_global, train_data_num,
+                 train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
+                 device, model, args, model_trainer, timer, metrics):
+        self.worker_index = worker_index
+        self.in_neighbor_idx_list = topology_manager.get_in_neighbor_idx_list(self.worker_index)
         logging.info(self.in_neighbor_idx_list)
 
         self.worker_result_dict = dict()
@@ -28,9 +30,10 @@ class BaseDecentralizedWorker(object):
         for neighbor_idx in self.in_neighbor_idx_list:
             self.flag_neighbor_result_received_dict[neighbor_idx] = False
 
+        # This part is different from decentralized_demo
         # Same with fedavg
         # ====================== 
-        self.client_index = args.client_index
+        # self.client_index = client_index
         self.train_data_global = train_data_global
         self.test_data_global = test_data_global
         self.train_data_num = train_data_num
@@ -39,9 +42,9 @@ class BaseDecentralizedWorker(object):
         self.test_data_local_dict = test_data_local_dict
         self.train_data_local_num_dict = train_data_local_num_dict
 
-        self.test_local = self.test_data_local_dict[client_index]
-        self.train_local = self.train_data_local_dict[client_index]
-        self.local_sample_number = self.train_data_local_num_dict[client_index]
+        self.test_local = self.test_data_local_dict[worker_index]
+        self.train_local = self.train_data_local_dict[worker_index]
+        self.local_sample_number = self.train_data_local_num_dict[worker_index]
 
         self.worker_number = worker_number
         self.device = device
@@ -50,14 +53,11 @@ class BaseDecentralizedWorker(object):
         self.sample_num_dict = dict()
 
         self.model_trainer = model_trainer
-        self.local_num_iterations, self.global_num_iterations = \
-            self.get_num_iterations()
+        self.num_iterations = self.get_num_iterations()
 
 
     def get_num_iterations(self):
-        local_num_iterations = get_local_num_iterations(self.local_sample_number, self.args.batch_size)
-        global_num_iterations = get_avg_num_iterations(self.train_data_local_num_dict, self.args.batch_size)
-        return local_num_iterations, global_num_iterations
+        return get_avg_num_iterations(self.train_data_local_num_dict, self.args.batch_size)
 
     def epoch_init(self):
         if self.args.model in ['lstm', 'lstmwt2']:
@@ -98,9 +98,9 @@ class BaseDecentralizedWorker(object):
         # self.train_local_iter = iter(self.train_local)
         pass
 
-    def add_result(self, client_index, updated_information):
-        self.worker_result_dict[client_index] = updated_information
-        self.flag_neighbor_result_received_dict[client_index] = True
+    def add_result(self, worker_index, updated_information):
+        self.worker_result_dict[worker_index] = updated_information
+        self.flag_neighbor_result_received_dict[worker_index] = True
 
     def check_whether_all_receive(self):
         for neighbor_idx in self.in_neighbor_idx_list:
@@ -182,25 +182,21 @@ class BaseDecentralizedWorker(object):
         logging.debug("aggregate time cost: %d" % (end_time - start_time))
         return averaged_params
 
-    def train_one_step(self, epoch=None, iteration=None, end_of_epoch=False,
-            tracker=None, metrics=None
-        ):
+    def train_one_step(self, epoch=None, iteration=None, tracker=None, metrics=None):
         train_batch_data = self.get_train_batch_data()
         loss, pred, target = self.model_trainer.train_one_step(
             train_batch_data, device=self.device, args=self.args,
-            epoch=epoch, iteration=iteration, end_of_epoch=end_of_epoch,
+            epoch=epoch, iteration=iteration,
             tracker=tracker, metrics=metrics)
 
         return loss, pred, target
 
 
-    def infer_bw_one_step(self, epoch=None, iteration=None, end_of_epoch=False,
-            tracker=None, metrics=None
-        ):
+    def infer_bw_one_step(self, epoch=None, iteration=None, tracker=None, metrics=None):
         train_batch_data = self.get_train_batch_data()
         loss, pred, target = self.model_trainer.infer_bw_one_step(
             train_batch_data, device=self.device, args=self.args,
-            epoch=epoch, iteration=iteration, end_of_epoch=end_of_epoch,
+            epoch=epoch, iteration=iteration,
             tracker=tracker, metrics=metrics)
 
         return loss, pred, target

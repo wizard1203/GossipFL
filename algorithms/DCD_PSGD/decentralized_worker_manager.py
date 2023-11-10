@@ -12,15 +12,16 @@ from fedml_core.distributed.communication.message import Message
 
 from algorithms.baseDecent.decentralized_worker_manager import BaseDecentralizedWorkerManager
 
-from mpi4py import MPI
-
-
 from utils.context import (
     raise_MPI_error,
     raise_error_without_process,
     get_lock,
 )
-
+from utils.timer import Timer
+from utils.tracker import RuntimeTracker
+# from fedml_api.utils.timer_with_cuda import Timer
+from utils.metrics import Metrics
+from utils.wandb_util import wandb_log
 from utils.data_utils import (
     get_data,
     apply_gradient
@@ -37,8 +38,8 @@ from .compressor import DCDCompressor
 comm = MPI.COMM_WORLD
 
 class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
-    def __init__(self, args, comm, rank, size, worker, topology_manager, model_trainer, perf_timer, metrics):
-        super().__init__(args, comm, rank, size, worker, topology_manager, model_trainer, perf_timer, metrics)
+    def __init__(self, args, comm, rank, size, worker, topology_manager, model_trainer, timer, metrics):
+        super().__init__(args, comm, rank, size, worker, topology_manager, model_trainer, timer, metrics)
         # ====================================
         self.training_thread = threading.Thread(name='training', target=self.run_sync)
 
@@ -66,7 +67,7 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
         time.sleep(1)
         logging.debug("MPI exit barrier!")
 
-        if self.client_index == 0:
+        if self.worker_index == 0:
             logging.debug("COORDINATOR notify clients to start!")
             self.coodinator_thread.start()
             self.notify_clients()
@@ -75,16 +76,16 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
     def register_message_receive_handlers(self):
         self.register_message_receive_handler(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR,
-                                            self.handle_msg_from_neighbor)
+                                              self.handle_msg_from_neighbor)
         self.register_message_receive_handler(MyMessage.MSG_TYPE_CLIENT_TO_COORDINATOR,
-                                            self.handle_msg_client_to_coordinator)
+                                              self.handle_msg_client_to_coordinator)
         self.register_message_receive_handler(MyMessage.MSG_TYPE_COORDINATOR_TO_CLIENT,
-                                            self.handle_msg_coordinator_to_client)
+                                              self.handle_msg_coordinator_to_client)
 
 
 
     # def start_training(self):
-    #     self.server_timer.global_comm_round_idx = 0
+    #     self.global_round_idx = 0
     #     self.__train()
 
     # TODO
@@ -92,7 +93,6 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
         sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
         # training_interation_result = msg_params.get(MyMessage.MSG_ARG_KEY_PARAMS_1)
         # local_sample_number = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
-        client_other_params = msg_params.get(MyMessage.MSG_ARG_KEY_CLIENT_OTHER_PARAMS)
 
         # =========================== wait for complete aggregation
         logging.debug("receive rank %d message, wait for complete aggregation" %
@@ -101,21 +101,60 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
             logging.debug("handle_msg_from_neighbor. sender_id = " + str(sender_id))
             self.worker.add_result(sender_id, msg_params)
-        self.client_check_whether_all_receive_and_process()
 
+        if self.worker.check_whether_all_receive():
+            logging.debug(">>>>>>>>>>>>>>>WORKER %d, ROUND %d finished!<<<<<<<<" % (self.worker_index, self.global_round_idx))
+            self.global_round_idx += 1
+
+            self.sync_receive_all_event.set()
+            if self.global_round_idx == self.comm_round:
+                self.finish()
+            # self.__train()
+
+    def handle_msg_from_neighbor_old(self, msg_params):
+        sender_id = msg_params.get(MyMessage.MSG_ARG_KEY_SENDER)
+        # training_interation_result = msg_params.get(MyMessage.MSG_ARG_KEY_PARAMS_1)
+        # local_sample_number = msg_params.get(MyMessage.MSG_ARG_KEY_NUM_SAMPLES)
+
+        # =========================== wait for complete aggregation
+        logging.debug("receive rank %d message, wait for complete aggregation" %
+            (sender_id))
+        self.complete_aggregation_event.wait()
+        self.neighbor_transfer_lock.acquire()
+
+        logging.debug("handle_msg_from_neighbor. sender_id = " + str(sender_id))
+        # Not used to add compressed result into cache
+        # self.worker.add_result(sender_id, training_interation_result)
+        self.worker.flag_neighbor_result_received_dict[sender_id] = True
+        assert self.worker.shapes is not None
+        self.compressor.original_shapes = self.worker.shapes
+        self.compressor.uncompress(msg_params, self.worker.neighbor_hat_params[sender_id], 
+            self.selected_shapes, self.worker.shapes)
+        if self.neighbor_transfer_lock.locked():
+            self.neighbor_transfer_lock.release()
+        if self.worker.check_whether_all_receive():
+            logging.debug(">>>>>>>>>>>>>>>WORKER %d, ROUND %d finished!<<<<<<<<" % (self.worker_index, self.global_round_idx))
+            self.global_round_idx += 1
+
+            self.sync_receive_all_event.set()
+            if self.global_round_idx == self.comm_round:
+                self.finish()
+            # self.__train()
 
 
     def run_sync(self):
-        with raise_MPI_error(MPI):
-            for _ in range(self.args.max_epochs):
+        with raise_MPI_error():
+            for epoch in range(self.epochs):
+                self.epoch = epoch
 
                 # update worker's dataset and data loader
                 with raise_error_without_process():
-                    self.worker.train_local.sampler.set_epoch(self.client_timer.local_outer_epoch_idx)
+                    self.worker.train_local.sampler.set_epoch(epoch)
                 # self.worker.update_dataset()
                 self.epoch_init()
 
-                for _ in range(self.worker.global_num_iterations):
+                for iteration in range(self.worker.num_iterations):
+                    self.iteration = iteration
                     logging.debug("wait start_epoch_event")
                     # self.start_epoch_event.set()
                     self.start_epoch_event.wait()
@@ -124,17 +163,13 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
                     # robust test
                     if self.args.Failure_chance is not None and np.random.rand(1) < self.args.Failure_chance:
                         logging.info("Communication Failure happens on worker: {}, Failure_chance: {}".format(
-                            self.client_index, self.args.Failure_chance))
+                            self.worker_index, self.args.Failure_chance))
                     else:
-                        self.lr_schedule(self.worker.global_num_iterations, self.args.warmup_epochs)
+                        self.lr_schedule(self.epoch, self.iteration, self.global_round_idx,
+                                        self.worker.num_iterations, self.args.warmup_epochs)
                         loss, output, target \
-                            = self.worker.infer_bw_one_step(
-                                self.client_timer.local_outer_epoch_idx,
-                                self.client_timer.local_inner_iter_idx,
-                                self.check_end_epoch(),
-                                self.train_tracker,
-                                self.metrics
-                            )
+                            = self.worker.infer_bw_one_step(self.epoch, self.iteration,
+                                                            self.train_tracker, self.metrics)
                     local_sample_number = self.worker.local_sample_number
                     # batch_metric_stat = self.metrics.evaluate(loss, output, target)
                     # self.train_tracker.update_metrics(batch_metric_stat, n_samples=target.size(0))
@@ -173,7 +208,7 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
                                 for _rank, _hat_params in self.worker.neighbor_hat_params.items()
                             ]
                         ) + (
-                            flatten_params.buffer * self.gossip_info[self.client_index]
+                            flatten_params.buffer * self.gossip_info[self.worker_index]
                         )
                         - self.worker.param_groups[0]["lr"] * flatten_grads.buffer
                     )
@@ -194,26 +229,22 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
 
                     # begin to send model
                     logging.debug("Begin send and receive")
-                    client_other_params = {}
-                    for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.client_index):
+                    for neighbor_idx in self.topology_manager.get_out_neighbor_idx_list(self.worker_index):
                         if self.compression in ["randomk", "topk"]:
                             self.send_sparse_params_to_neighbors(neighbor_idx, 
                                 sync_buffer["flatten_selected_values"].buffer,
                                 sync_buffer["flatten_selected_indices"].buffer,
-                                local_sample_number,
-                                client_other_params)
+                                local_sample_number)
                         # Not support Now
                         elif self.compression == "quantize":
                             self.send_quant_params_to_neighbors(neighbor_idx, 
                                 sync_buffer["flatten_updates"].buffer,
-                                local_sample_number,
-                                client_other_params)
+                                local_sample_number)
                         # Not support Now
                         elif self.compression == "sign":
                             self.send_sigh_params_to_neighbors(neighbor_idx, 
                                 sync_buffer["flatten_norms"].buffer,
-                                local_sample_number,
-                                client_other_params)
+                                local_sample_number)
                         else:
                             raise NotImplementedError
                     # wait for receiving all
@@ -237,6 +268,37 @@ class DecentralizedWorkerManager(BaseDecentralizedWorkerManager):
                     self.start_epoch_event.clear()
                     self.sync_receive_all_event.clear()
 
-                    client_other_params = {}
-                    self.test_and_send_to_coordinator(client_other_params)
-                    self.client_timer.past_iterations(iterations=1)
+                    self.test_and_send_to_coordinator(iteration, epoch)
+                # self.model_trainer.lr_schedule(epoch+1)
+
+
+    def send_result_to_neighbors(self, receive_id, client_params1, local_sample_number):
+        logging.debug("send_result_to_neighbors. receive_id = " + str(receive_id))
+        message = Message(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR, self.get_sender_id(), receive_id)
+        message.add_params(MyMessage.MSG_ARG_KEY_PARAMS_1, client_params1)
+        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_number)
+        self.send_message(message)
+
+    def send_sparse_params_to_neighbors(self, receive_id, client_sparse_params1, client_sparse_index1, local_sample_number):
+        logging.debug("send_sparse_params_to_neighbors. receive_id = " + str(receive_id))
+        message = Message(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR, self.get_sender_id(), receive_id)
+        message.add_params(MyMessage.MSG_ARG_KEY_SPARSE_PARAMS_1, client_sparse_params1)
+        message.add_params(MyMessage.MSG_ARG_KEY_SPARSE_INDEX_1, client_sparse_index1)
+        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_number)
+        self.send_message(message)
+
+    def send_quant_params_to_neighbors(self, receive_id, client_quant_params1, local_sample_number):
+        logging.debug("send_quant_params_to_neighbors. receive_id = " + str(receive_id))
+        message = Message(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR, self.get_sender_id(), receive_id)
+        message.add_params(MyMessage.MSG_ARG_KEY_QUANT_PARAMS_1, client_quant_params1)
+        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_number)
+        self.send_message(message)
+
+    def send_sigh_params_to_neighbors(self, receive_id, client_sign_params1, local_sample_number):
+        logging.debug("send_sigh_params_to_neighbors. receive_id = " + str(receive_id))
+        message = Message(MyMessage.MSG_TYPE_SEND_MSG_TO_NEIGHBOR, self.get_sender_id(), receive_id)
+        message.add_params(MyMessage.MSG_ARG_KEY_SIGN_PARAMS_1, client_sign_params1)
+        message.add_params(MyMessage.MSG_ARG_KEY_NUM_SAMPLES, local_sample_number)
+        self.send_message(message)
+
+

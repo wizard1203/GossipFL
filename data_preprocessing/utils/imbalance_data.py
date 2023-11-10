@@ -52,41 +52,20 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
         return dataset.target[idx]
 
     def update(self, **kwargs):
-        # exp_num = kwargs[self.imbalance_beta_decay_type]
-
-        if self.imbalance_beta_decay_type == "global_round":
-            exp_num = kwargs["global_time_info"]["global_comm_round_idx"]
-        elif self.imbalance_beta_decay_type == "local_round":
-            exp_num = kwargs["local_time_info"]["local_comm_round_idx"]
-        else:
-            raise NotImplementedError
+        exp_num = kwargs[self.imbalance_beta_decay_type]
 
         if self.args.data_sampler == 'imbalance':
             pass
         elif self.args.data_sampler == "decay_imb":
-            if exp_num > self.args.imbalance_sample_warmup_rounds:
-                exp_num = exp_num - self.args.imbalance_sample_warmup_rounds
-                self.beta = self.imbalance_beta_min + \
-                    (self.base_beta - self.imbalance_beta_min) * (self.imbalance_beta_decay_rate**exp_num)
-                effective_num = 1.0 - np.power(self.beta, self.label_to_count)
-                per_cls_weights = (1.0 - self.beta) / np.array(effective_num)
+            self.beta = self.imbalance_beta_min + \
+                (self.base_beta - self.imbalance_beta_min) * (self.imbalance_beta_decay_rate**exp_num)
+            effective_num = 1.0 - np.power(self.beta, self.label_to_count)
+            per_cls_weights = (1.0 - self.beta) / np.array(effective_num)
 
-                # weight for each sample
-                weights = [per_cls_weights[self._get_label(self.dataset, idx)]
-                        for idx in self.indices]
-                self.weights = torch.DoubleTensor(weights)
-            else:
-                pass
-            # exp_num = exp_num - self.args.imbalance_sample_warmup_rounds
-            # self.beta = self.imbalance_beta_min + \
-            #     (self.base_beta - self.imbalance_beta_min) * (self.imbalance_beta_decay_rate**exp_num)
-            # effective_num = 1.0 - np.power(self.beta, self.label_to_count)
-            # per_cls_weights = (1.0 - self.beta) / np.array(effective_num)
-
-            # # weight for each sample
-            # weights = [per_cls_weights[self._get_label(self.dataset, idx)]
-            #         for idx in self.indices]
-            # self.weights = torch.DoubleTensor(weights)
+            # weight for each sample
+            weights = [per_cls_weights[self._get_label(self.dataset, idx)]
+                    for idx in self.indices]
+            self.weights = torch.DoubleTensor(weights)
         else:
             raise NotImplementedError
 

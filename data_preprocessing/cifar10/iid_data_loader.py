@@ -10,15 +10,12 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
 from torch.utils.data.distributed import DistributedSampler
 
-from .transform import data_transforms_cifar10
-
 
 def load_iid_cifar10(dataset, data_dir, partition_method, 
         partition_alpha, client_number, batch_size, rank=0, args=None):
 
     CIFAR_MEAN = [0.49139968, 0.48215827, 0.44653124]
     CIFAR_STD = [0.24703233, 0.24348505, 0.26158768]
-    # CIFAR_STD = [0.2023, 0.1994, 0.2010]
 
     image_size = 32
     train_transform = transforms.Compose([
@@ -38,7 +35,7 @@ def load_iid_cifar10(dataset, data_dir, partition_method,
     test_dataset = CIFAR10(root=data_dir, train=False,
                             transform=test_transform, download=False)
 
-    if args.mode in ['distributed', 'centralized']:
+    if args.mode == 'distributed':
         train_sampler = None
         shuffle = True
         if client_number > 1:

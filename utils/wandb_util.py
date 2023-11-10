@@ -1,13 +1,9 @@
 import logging
-import os
 
 import pandas as pd 
 import wandb
 
-from utils.meter import AverageMeter
-
-
-def wandb_log(prefix, sp_values, com_values, update_summary=False, wandb_summary_dict={}):
+def wandb_log(prefix, sp_values, com_values):
     """
         prefix + tags.values is the name of sp_values;
         values should include information like:
@@ -17,19 +13,18 @@ def wandb_log(prefix, sp_values, com_values, update_summary=False, wandb_summary
     """
     new_values = {}
     for k, _ in sp_values.items():
-        # new_values[prefix+"/" + k] = sp_values[k]
-        new_key = prefix+"/" + k
-        new_values[new_key] = sp_values[k]
-        if update_summary:
-            if new_key not in wandb_summary_dict:
-                wandb_summary_dict[new_key] = AverageMeter()
-            wandb_summary_dict[new_key].update(new_values[new_key], n=1)
-            summary = wandb_summary_dict[new_key].make_summary(new_key)
-            for key, valaue in summary.items():
-                wandb.run.summary[key] = valaue
-
+        new_values[prefix+"/" + k] = sp_values[k]
     new_values.update(com_values)
     wandb.log(new_values)
+
+
+
+def upload_metric_info(str_pre, train_metric_info, test_metric_info, metrics, comm_values):
+    logging.info(str_pre + 'Train: ' + metrics.str_fn(train_metric_info))
+    logging.info(str_pre + 'Test: ' + metrics.str_fn(test_metric_info))
+
+    wandb_log(prefix='Train', sp_values=train_metric_info, com_values=comm_values)
+    wandb_log(prefix='Test', sp_values=test_metric_info, com_values=comm_values)
 
 
 def delete_output_log(path=""):
@@ -44,9 +39,7 @@ def delete_output_log(path=""):
             print("Log: {}, pass....".format(log))
 
 
-
-
-def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at", per_page=50):
+def get_runs_from_wandb(path="", filters={}, order="-created_at", per_page=50):
     """
         path="", filters={}, order="-created_at", per_page=50
         run: A single run associated with an entity and project.
@@ -74,7 +67,6 @@ def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at"
     api = wandb.Api()
     # Project is specified by <entity/project-name>
     # usage: path="", filters={}, order="-created_at", per_page=50
-    path = entity + "/" + project
     runs = api.runs(path, filters, order, per_page)
     summary_list = []
     config_list = []
@@ -97,7 +89,7 @@ def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at"
         id_list.append(run.id)
         project_list.append(run.project)
 
-        uid = run.entity + '/' + run.project + '/' + run.id
+        uid = run.project+'/'+run.id
         uid_list.append(uid)
         runs_dict[uid] = run
         state_list.append(run.state)
@@ -108,14 +100,7 @@ def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at"
         created_at_list.append(run.created_at)
         # run.config is the input metrics.
         # We remove special values that start with _.
-        # config = {k:v for k,v in run.config.items() if not k.startswith('_')}
-        config = {}
-        for k, v in run.config.items():
-            if not k.startswith('_'):
-                if type(v) == list:
-                    config[k] = str(v)
-                else:
-                    config[k] = v
+        config = {k:v for k,v in run.config.items() if not k.startswith('_')}
         config_list.append(config) 
 
         # run.name is the name of the run.
@@ -134,6 +119,7 @@ def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at"
     entity_df = pd.DataFrame({'entity': entity_list})
     created_at_df = pd.DataFrame({'created_at': created_at_list})
 
+
     all_df = pd.concat([name_df, config_df, summary_df, id_df, project_df, uid_df,
                         state_df, url_df, username_df, entity_df, created_at_df], axis=1)
     # all_df.to_csv("project.csv")
@@ -144,42 +130,6 @@ def get_project_runs_from_wandb(entity, project, filters={}, order="-created_at"
 #     x_list = list(pd_frame[x_name])
 #     y_list = list(pd_frame[y_name])
 #     return x_list, y_list
-
-
-def get_project_path(entity, project):
-    return os.path.join(entity, project)
-
-
-def get_run_folder_name(created_at_number_str, id):
-    name = "run" + "-" + created_at_number_str + "-" + id
-    return name
-
-
-def get_run_path(entity, project, created_at_number_str, id):
-    folder_name = get_run_folder_name(created_at_number_str, id)
-    project_path = get_project_path(entity, project)
-    return os.path.join(project_path, folder_name)
-
-
-
-def time_to_number_str(time):
-    day = time.split('T')[0]
-    time = time.split('T')[1]
-    day = day.replace("-", "")
-    time = time.replace(":", "")
-    new_time = day + "_" + time
-    return new_time
-
-def number_str_to_time(number_str):
-    day = number_str.split('_')[0]
-    time = number_str.split('_')[1]
-    day = day[0:3] + "-" + day[4:6] + "-" + day[6:]
-    time = time[0:2] + ":" + time[2:4] + ":" + time[4:]
-    new_time = day + "T" + time
-    return new_time
-
-
-
 
 
 

@@ -1,7 +1,4 @@
-from algorithms.basePS.message_define import MyMessage
-
-
-class MyMessage(MyMessage):
+class MyMessage(object):
     """
         message type definition
     """
@@ -44,6 +41,6 @@ class MyMessage(MyMessage):
     MSG_ARG_KEY_TEST_ERROR = "test_error"
     MSG_ARG_KEY_TEST_NUM = "test_num_sample"
 
-    MSG_ARG_KEY_TRAIN_TRACKER_INFO = "train_metrics"
-    MSG_ARG_KEY_TEST_TRACKER_INFO = "test_metrics"
+    MSG_ARG_KEY_TRAIN_METRICS = "train_metrics"
+    MSG_ARG_KEY_TEST_METRICS = "test_metrics"
 

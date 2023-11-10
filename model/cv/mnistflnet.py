@@ -2,12 +2,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MnistFLNet(nn.Module):
-    def __init__(self, input_channels=1, output_dim=10):
+    def __init__(self):
         super(MnistFLNet, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 32, 5, 1, 2)
+        self.conv1 = nn.Conv2d(1, 32, 5, 1, 2)
         self.conv2 = nn.Conv2d(32, 64, 5, 1, 2)
         self.fc1 = nn.Linear(3136, 512)
-        self.fc2 = nn.Linear(512, output_dim)
+        self.fc2 = nn.Linear(512, 10)
         self.name = 'mnistflnet'
 
     def forward(self, x):
@@ -17,8 +17,6 @@ class MnistFLNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         return F.softmax(x)
-
-
 
 
 

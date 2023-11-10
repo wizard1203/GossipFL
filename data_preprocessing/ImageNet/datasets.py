@@ -5,7 +5,7 @@ import numpy as np
 
 from PIL import Image
 import torch.utils.data as data
-# from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
+from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 
 from fedml_core.non_iid_partition.noniid_partition import record_data_stats, \
     non_iid_partition_with_dirichlet_distribution

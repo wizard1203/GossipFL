@@ -1,5 +1,4 @@
 import math
-import logging
 
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
@@ -25,8 +24,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 
 def norm2d(planes, num_channels_per_group=32):
-    # print("num_channels_per_group:{}".format(num_channels_per_group))
-    # logging.debug("num_channels_per_group:{}".format(num_channels_per_group))
+    print("num_channels_per_group:{}".format(num_channels_per_group))
     if num_channels_per_group > 0:
         return GroupNorm2d(planes, num_channels_per_group, affine=True,
                            track_running_stats=False)

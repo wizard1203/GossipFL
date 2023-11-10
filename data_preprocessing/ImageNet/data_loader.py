@@ -5,8 +5,7 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 from torch.utils.data.distributed import DistributedSampler
-# from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
-# from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
+from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 
 from .datasets import ImageNet
 from .datasets import ImageNet100
@@ -101,9 +100,9 @@ def get_dataloader(dataset_train, dataset_test, train_bs,
                     test_bs, dataidxs=None, net_dataidx_map=None, args=None):
 
     train_dl = data.DataLoader(dataset=dataset_train, batch_size=train_bs, shuffle=True, drop_last=False,
-                        pin_memory=False, num_workers=args.data_load_num_workers)
+                        pin_memory=True, num_workers=args.data_load_num_workers)
     test_dl = data.DataLoader(dataset=dataset_test, batch_size=test_bs, shuffle=False, drop_last=False,
-                        pin_memory=False, num_workers=args.data_load_num_workers)
+                        pin_memory=True, num_workers=args.data_load_num_workers)
 
     return train_dl, test_dl
 

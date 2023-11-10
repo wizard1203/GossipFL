@@ -3,21 +3,6 @@ import time
 import os
 import numpy as np
 import scipy.stats as stats
-from collections.abc import Iterable
-
-
-# def freeze_layer(args, optimizer, model, layer_index=None, layer_name=None):
-#     pass
-
-
-
-
-# def unfreeze_layer(args, optimizer, model, layer_index=None, layer_name=None):
-#     pass
-
-
-
-
 
 
 def gen_random_id():

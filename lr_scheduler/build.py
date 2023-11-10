@@ -30,23 +30,17 @@ def create_scheduler(args, optimizer, **kwargs):
     elif args.sched == "StepLR":
         lr_scheduler = StepLR(
             optimizer, base_lr=args.lr, warmup_epochs=args.warmup_epochs,
-            num_iterations=kwargs['num_iterations'],
-            lr_warmup_type=args.lr_warmup_type, lr_warmup_value=args.lr_warmup_value,
-            lr_decay_rate=args.lr_decay_rate,
+            num_iterations=kwargs['num_iterations'], lr_decay_rate=args.lr_decay_rate,
             step_size=args.step_size)
     elif args.sched == "MultiStepLR":
         lr_scheduler = MultiStepLR(
             optimizer, base_lr=args.lr, warmup_epochs=args.warmup_epochs,
-            num_iterations=kwargs['num_iterations'],
-            lr_warmup_type=args.lr_warmup_type, lr_warmup_value=args.lr_warmup_value,
-            lr_decay_rate=args.lr_decay_rate,
+            num_iterations=kwargs['num_iterations'], lr_decay_rate=args.lr_decay_rate,
             lr_milestones=args.lr_milestones)
     elif args.sched == "CosineAnnealingLR":
         lr_scheduler = CosineAnnealingLR(
             optimizer, base_lr=args.lr, warmup_epochs=args.warmup_epochs,
-            num_iterations=kwargs['num_iterations'],
-            lr_warmup_type=args.lr_warmup_type, lr_warmup_value=args.lr_warmup_value,
-            lr_T_max=args.lr_T_max,
+            num_iterations=kwargs['num_iterations'], lr_T_max=args.lr_T_max,
             lr_eta_min=args.lr_eta_min)
     else:
         raise NotImplementedError

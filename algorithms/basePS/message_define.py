@@ -27,39 +27,18 @@ class MyMessage(object):
     MSG_ARG_KEY_MODEL_INDEXES = "model_indexes"
     MSG_ARG_KEY_GRAD_INDEXES = "grad_indexes"
 
-    MSG_ARG_KEY_CLIENT_OTHER_PARAMS = "client_other_params"
-    MSG_ARG_KEY_GLOBAL_OTHER_PARAMS = "global_other_params"
+    # Indicate global and current communication round.
+    MSG_ARG_KEY_GLOBAL_ROUND_INDEX = "global_round_idx"
+    MSG_ARG_KEY_LOCAL_ROUND_INDEX = "local_round_idx"
 
-    # time info
-    MSG_ARG_KEY_TIME_INFO = "time_info"
+    # Indicate current dataset sampling times.
+    MSG_ARG_KEY_LOCAL_EPOCH_INDEX = "local_epoch_idx"
+    MSG_ARG_KEY_LOCAL_ITER_INDEX = "local_iter_idx"
+    MSG_ARG_KEY_LOCAL_TOTAL_ITER_INDEX = "local_total_iter_idx"
 
-    # global timestamp
-    # MSG_ARG_KEY_GLOBAL_COMM_ROUND_INDEX = "global_comm_round_idx"
 
-    # MSG_ARG_KEY_GLOBAL_OUTER_EPOCH_INDEX = "global_outer_epoch_idx"
-    # MSG_ARG_KEY_GLOBAL_INNER_EPOCH_INDEX = "global_inner_epoch_idx"
-
-    # MSG_ARG_KEY_GLOBAL_OUTER_ITER_INDEX = "global_outer_iter_idx"
-    # MSG_ARG_KEY_GLOBAL_INNER_ITER_INDEX = "global_inner_iter_idx"
-
-    # # local timestamp
-    # MSG_ARG_KEY_LOCAL_COMM_ROUND_INDEX = "local_comm_round_idx"
-
-    # MSG_ARG_KEY_LOCAL_OUTER_EPOCH_INDEX = "local_outer_epoch_idx"
-    # MSG_ARG_KEY_LOCAL_INNER_EPOCH_INDEX = "local_inner_epoch_idx"
-
-    # MSG_ARG_KEY_LOCAL_OUTER_ITER_INDEX = "local_outer_iter_idx"
-    # MSG_ARG_KEY_LOCAL_INNER_ITER_INDEX = "local_inner_iter_idx"
-
-    # MSG_ARG_KEY_TOTAL_ITER_INDEX = "total_iter_idx"
-
-    # MSG_ARG_KEY_LOCAL_TOTAL_EPOCH_INDEX = "local_total_epoch_idx"
-    # MSG_ARG_KEY_LOCAL_EPOCH_INDEX = "local_epoch_idx"
-    # MSG_ARG_KEY_LOCAL_ITER_INDEX = "local_iter_idx"
-    # MSG_ARG_KEY_LOCAL_TOTAL_ITER_INDEX = "local_total_iter_idx"
-
-    MSG_ARG_KEY_TRAIN_TRACKER_INFO = "train_tracker_info"
-    MSG_ARG_KEY_TEST_TRACKER_INFO = "test_tracker_info"
+    MSG_ARG_KEY_TRAIN_METRICS = "train_metrics"
+    MSG_ARG_KEY_TEST_METRICS = "test_metrics"
 
 
 

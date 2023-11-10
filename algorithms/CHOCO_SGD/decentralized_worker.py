@@ -9,6 +9,8 @@ from mpi4py import MPI
 
 from algorithms.baseDecent.decentralized_worker import BaseDecentralizedWorker
 
+from utils.timer import Timer
+# from fedml_api.utils.timer_with_cuda import Timer
 from utils.data_utils import (
     get_data,
     apply_gradient
@@ -20,12 +22,12 @@ from utils.tensor_buffer import (
 
 
 class DecentralizedWorker(BaseDecentralizedWorker):
-    def __init__(self, client_index, topology_manager, train_data_global, test_data_global, train_data_num,
-                train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                device, model, args, model_trainer, perf_timer, metrics):
-        super().__init__(client_index, topology_manager, train_data_global, test_data_global, train_data_num,
-                train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                device, model, args, model_trainer, perf_timer, metrics)
+    def __init__(self, worker_index, topology_manager, train_data_global, test_data_global, train_data_num,
+                 train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
+                 device, model, args, model_trainer, timer, metrics):
+        super().__init__(worker_index, topology_manager, train_data_global, test_data_global, train_data_num,
+                 train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
+                 device, model, args, model_trainer, timer, metrics)
         """
             The `compression` method should be specified in `args`.
         """
@@ -78,12 +80,12 @@ class DecentralizedWorker(BaseDecentralizedWorker):
 
         # init the neighbor_params.
         self.neighbor_hat_params = {
-                self.client_index: deepcopy(flatten_params),
+                self.worker_index: deepcopy(flatten_params),
                 "memory": deepcopy(flatten_params),
                 # "receive_cache": deepcopy(flatten_params),
             }
-        self.neighbor_hat_params[self.client_index].buffer = \
-            self.neighbor_hat_params[self.client_index].buffer.to(flatten_params.buffer.device)
+        self.neighbor_hat_params[self.worker_index].buffer = \
+            self.neighbor_hat_params[self.worker_index].buffer.to(flatten_params.buffer.device)
         self.neighbor_hat_params["memory"].buffer = \
             self.neighbor_hat_params["memory"].buffer.to(flatten_params.buffer.device)
         # self.neighbor_hat_params["receive_cache"].buffer = \

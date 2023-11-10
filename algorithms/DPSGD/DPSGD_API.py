@@ -3,7 +3,7 @@ from mpi4py import MPI
 
 from fedml_core.distributed.topology.symmetric_topology_manager import SymmetricTopologyManager
 
-from utils.perf_timer_with_cuda import Perf_Timer
+from utils.timer_with_cuda import Timer
 from utils.metrics import Metrics
 from utils.logger import Logger
 
@@ -35,7 +35,7 @@ def FedML_DPSGD(process_id, worker_number, device, comm, model, train_data_num, 
     # conf.logger = logging.Logger(conf.checkpoint_dir)
 
     # configure timer.
-    perf_timer = Perf_Timer(
+    timer = Timer(
         verbosity_level=1 if track_time else 0,
         log_fn=Logger.log_timer
     )
@@ -46,11 +46,11 @@ def FedML_DPSGD(process_id, worker_number, device, comm, model, train_data_num, 
     # logging.info(tpmgr.topology)
 
     # initialize the decentralized trainer (worker)
-    client_index = process_id
-    worker = DecentralizedWorker(client_index, tpmgr, train_data_global, test_data_global, train_data_num,
+    worker_index = process_id
+    worker = DecentralizedWorker(worker_index, tpmgr, train_data_global, test_data_global, train_data_num,
                  train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                 device, model, args, model_trainer, perf_timer, metrics)
+                 device, model, args, model_trainer, timer, metrics)
 
     client_manager = DecentralizedWorkerManager(args, comm, process_id, worker_number, worker, tpmgr, model_trainer,
-                                                perf_timer, metrics)
+                                                timer, metrics)
     client_manager.run()

@@ -358,11 +358,11 @@ class ModerateCNNCeleba(nn.Module):
 
 
 class ModerateCNNMNIST(nn.Module):
-    def __init__(self, output_dim=10, input_channels=1):
+    def __init__(self):
         super(ModerateCNNMNIST, self).__init__()
         self.conv_layer = nn.Sequential(
             # Conv Layer block 1
-            nn.Conv2d(in_channels=input_channels, out_channels=32, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -391,7 +391,7 @@ class ModerateCNNMNIST(nn.Module):
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.1),
-            nn.Linear(512, output_dim)
+            nn.Linear(512, 10)
         )
 
     def forward(self, x):

@@ -7,6 +7,8 @@ from torch import nn
 import traceback
 from mpi4py import MPI
 
+from utils.timer import Timer
+# from fedml_api.utils.timer_with_cuda import Timer
 from utils.data_utils import (
     get_data,
     apply_gradient
@@ -18,19 +20,19 @@ from utils.tensor_buffer import (
 from algorithms.baseDecent.decentralized_worker import BaseDecentralizedWorker
 
 class DecentralizedWorker(BaseDecentralizedWorker):
-    def __init__(self, client_index, topology_manager, train_data_global, test_data_global, train_data_num,
-                train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                device, model, args, model_trainer, perf_timer, metrics):
+    def __init__(self, worker_index, topology_manager, train_data_global, test_data_global, train_data_num,
+                 train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
+                 device, model, args, model_trainer, timer, metrics):
         """
             The `compression` method should be specified in `args`.
         """
-        self.client_index = client_index
+        self.worker_index = worker_index
         self.topology_manager = topology_manager
         self.refresh_gossip_info()
         #===========================================================================
-        super().__init__(client_index, topology_manager, train_data_global, test_data_global, train_data_num,
-                train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
-                device, model, args, model_trainer, perf_timer, metrics)
+        super().__init__(worker_index, topology_manager, train_data_global, test_data_global, train_data_num,
+                 train_data_local_dict, test_data_local_dict, train_data_local_num_dict, worker_number, 
+                 device, model, args, model_trainer, timer, metrics)
 
         # =================================================
         # Specilaized for SAPS_FL
@@ -38,7 +40,7 @@ class DecentralizedWorker(BaseDecentralizedWorker):
         self.param_groups = self.model_trainer.param_groups
         self.param_names = self.model_trainer.param_names
         # self.neighbors_info = self.topology_manager.topology
-        # self.gossip_info = self.topology_manager.topology[self.client_index]
+        # self.gossip_info = self.topology_manager.topology[self.worker_index]
 
         # will be initialized in init_neighbor_hat_params()
         self.neighbor_hat_params = None
@@ -61,9 +63,9 @@ class DecentralizedWorker(BaseDecentralizedWorker):
             )
 
         logging.debug("len of self.in_neighbor_idx_list[{}] = {}".format(
-            self.client_index, str(len(self.in_neighbor_idx_list))))
+            self.worker_index, str(len(self.in_neighbor_idx_list))))
         logging.debug("len of self.worker_result_dict[{}] = {}".format(
-            self.client_index, str(len(self.worker_result_dict))))
+            self.worker_index, str(len(self.worker_result_dict))))
         # clear dict for saving memory
         self.worker_result_dict = {}
 
@@ -79,7 +81,7 @@ class DecentralizedWorker(BaseDecentralizedWorker):
             self.param_groups, self.param_names, is_get_grad=False
         )
         flatten_params = TensorBuffer(params)
-        flatten_params.buffer = flatten_params.buffer * self.gossip_info[self.client_index]
+        flatten_params.buffer = flatten_params.buffer * self.gossip_info[self.worker_index]
         # init the neighbor_params.
         self.neighbor_hat_params = {
             "memory": deepcopy(flatten_params),
@@ -92,8 +94,8 @@ class DecentralizedWorker(BaseDecentralizedWorker):
 
     def refresh_gossip_info(self):
         self.neighbors_info = self.topology_manager.topology
-        self.gossip_info = self.topology_manager.topology[self.client_index]
-        self.in_neighbor_idx_list = self.topology_manager.get_in_neighbor_idx_list(self.client_index)
+        self.gossip_info = self.topology_manager.topology[self.worker_index]
+        self.in_neighbor_idx_list = self.topology_manager.get_in_neighbor_idx_list(self.worker_index)
 
 
 

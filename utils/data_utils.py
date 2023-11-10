@@ -4,69 +4,10 @@ from datetime import datetime
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
 
 def get_n_bits(tensor):
     return 8 * tensor.nelement() * tensor.element_size()
-
-
-
-
-
-""" filter layers """
-
-def filter_parameters(named_parameters=None, named_modules=None,
-                    param_layers_list=[""],
-                    param_layers_length=-1,
-                    param_types=["Conv2d","Linear"]
-                    ):
-
-    filtered_named_parameters = {}
-    filtered_parameters_crt_names = []
-    filtered_parameter_shapes = {}
-
-    if len(param_layers_list) > 0:
-        filtered_parameters_crt_names = param_layers_list
-    else:
-        for name, param in named_parameters.items():
-            module_name = '.'.join(name.split('.')[:-1])
-            if type(named_modules[module_name]).__name__ in param_types:
-                filtered_parameters_crt_names.append(name)
-
-        if param_layers_length == -1:
-            pass
-        else:
-            filtered_parameters_crt_names = filtered_parameters_crt_names[:param_layers_length]
-
-        for name in filtered_parameters_crt_names:
-            filtered_named_parameters[name] = {}
-            filtered_parameter_shapes[name] = named_parameters[name].shape
-    return filtered_parameters_crt_names, filtered_named_parameters, filtered_parameter_shapes
-
-
-
-def mean_std_online_estimate(existingAggregate, newValue):
-    (count, mean, M2) = existingAggregate
-    # count += 1
-    delta = newValue - mean
-    mean += delta / count
-    delta2 = newValue - mean
-    M2 += delta * delta2
-    return (count, mean, M2)
-
-
-def retrieve_mean_std(existingAggregate):
-    (count, mean, M2) = existingAggregate
-    # logging.info(f"type(count): {type(count)},\
-    #     type(mean): {type(mean)},\
-    #     type(M2): {type(M2)}")
-    if count < 2:
-        logging.info(f"count: {count} is less than 2, Error of estimating STD....")
-        return float("nan")
-    else:
-        (mean, variance, sampleVariance) = (mean, M2 / count, M2 / (count - 1))
-        return (mean, variance, sampleVariance)
 
 
 
@@ -124,144 +65,40 @@ def get_named_data(model, mode='MODEL', use_cuda=True):
     elif mode == 'GRAD':
         grad_of_params = {}
         for name, parameter in model.named_parameters():
-            # logging.info(f"Getting grads as named_grads: name:{name}, type(parameter): {type(parameter)},"+
-            #             f" parameter.data.shape: {parameter.data.shape}, parameter.data.norm(): {parameter.data.norm()}"+
-            #             f" parameter.grad.shape: {parameter.grad.shape}, parameter.grad.norm(): {parameter.grad.norm()}")
             if use_cuda:
                 grad_of_params[name] = parameter.grad
             else:
                 grad_of_params[name] = parameter.grad.cpu()
-            # logging.info(f"Getting grads as named_grads: name:{name}, shape: {grad_of_params[name].shape}")
         return grad_of_params
     elif mode == 'MODEL+GRAD':
         model_and_grad = {}
         for name, parameter in model.named_parameters():
-            # if use_cuda:
-            #     model_and_grad[name] = parameter.data
-            #     model_and_grad[name+b'_gradient'] = parameter.grad
-            # else:
-            #     model_and_grad[name] = parameter.data.cpu()
-            #     model_and_grad[name+b'_gradient'] = parameter.grad.cpu()
             if use_cuda:
                 model_and_grad[name] = parameter.data
                 model_and_grad[name+b'_gradient'] = parameter.grad
             else:
                 model_and_grad[name] = parameter.data.cpu()
                 model_and_grad[name+b'_gradient'] = parameter.grad.cpu()
-
         return model_and_grad 
 
 
-def get_bn_params(prefix, module, use_cuda=True):
-    bn_params = {}
-    if use_cuda:
-        bn_params[f"{prefix}.weight"] = module.weight
-        bn_params[f"{prefix}.bias"] = module.bias
-        bn_params[f"{prefix}.running_mean"] = module.running_mean
-        bn_params[f"{prefix}.running_var"] = module.running_var
-        bn_params[f"{prefix}.num_batches_tracked"] = module.num_batches_tracked
-    else:
-        bn_params[f"{prefix}.weight"] = module.weight.cpu()
-        bn_params[f"{prefix}.bias"] = module.bias.cpu()
-        bn_params[f"{prefix}.running_mean"] = module.running_mean.cpu()
-        bn_params[f"{prefix}.running_var"] = module.running_var.cpu()
-        bn_params[f"{prefix}.num_batches_tracked"] = module.num_batches_tracked
-    return bn_params
-
-
-def get_all_bn_params(model, use_cuda=True):
-    all_bn_params = {}
-    for module_name, module in model.named_modules():
-        #     print(f"key:{key}, module, {module}")
-        # logging.info(f"key:{key}, type(module) is nn.BatchNorm2d: {type(module) is nn.BatchNorm2d}")
-        if type(module) is nn.BatchNorm2d:
-            # logging.info(f"module.weight: {module.weight}")        
-            # logging.info(f"module.bias: {module.bias}")
-            # logging.info(f"module.running_mean: {module.running_mean}")
-            # logging.info(f"module.running_var: {module.running_var}")
-            # logging.info(f"module.num_batches_tracked: {module.num_batches_tracked}")
-            bn_params = get_bn_params(module_name, module, use_cuda=use_cuda)
-            all_bn_params.update(bn_params)
-    return all_bn_params
-
-
-def idv_average_named_params(named_params_list, average_weights_dict_list, homo_weights_list=[],
-        inplace=True):
+def average_named_params(named_params_list, sum):
     """
         This is a weighted average operation.
-        average_weights_dict_list: includes weights with respect to clients. Different for each param.
-        inplace:  Whether change the first client's model inplace.
     """
     # logging.info("################aggregate: %d" % len(named_params_list))
-
-    if inplace:
-        (_, averaged_params) = named_params_list[0]
-    else:
-        (_, averaged_params) = deepcopy(named_params_list[0])
-
-    for name in averaged_params.keys():
-        for i in range(0, len(named_params_list)):
-            local_sample_number, local_named_params = named_params_list[i]
-            # logging.debug("aggregating ---- local_sample_number/sum: {}/{}, ".format(
-            #     local_sample_number, sum))
-            # The w here could be a tensor or a scaler.
-            if name not in average_weights_dict_list[i]:
-                # logging.info(f"Warnning: Layer {name} not in average_weights_dict_list[{i}].\
-                #     Using homo_weights_list[{i}] as averaging weights instead...")
-                w = homo_weights_list[i]
-            else:
-                w = average_weights_dict_list[i][name]
-                logging.debug(f"average_weights_dict_list[{i}][{name}]: {average_weights_dict_list[i][name]}")
-                # w = torch.full_like(average_weights_dict_list[i][name], homo_weights_list[i]).detach()
-                # logging.debug(f"homo_weights_list[i]: {homo_weights_list[i]}")
-            if not isinstance(w, float):
-                local_named_params[name] = check_device(local_named_params[name], w.device)
-            if i == 0:
-                averaged_params[name] = (local_named_params[name].data * w \
-                    ).type(averaged_params[name].dtype)
-            else:
-                averaged_params[name] = check_device(averaged_params[name], local_named_params[name].data.device)
-                averaged_params[name] += (local_named_params[name].data * w \
-                    ).type(averaged_params[name].dtype)
-    return averaged_params
-
-
-def average_named_params(named_params_list, average_weights_dict_list, inplace=True):
-    """
-        This is a weighted average operation.
-        average_weights_dict_list: includes weights with respect to clients. Same for each param.
-        inplace:  Whether change the first client's model inplace.
-    """
-    # logging.info("################aggregate: %d" % len(named_params_list))
-
-    if type(named_params_list[0]) is tuple or type(named_params_list[0]) is list:
-        if inplace:
-            (_, averaged_params) = named_params_list[0]
-        else:
-            (_, averaged_params) = deepcopy(named_params_list[0])
-    else:
-        if inplace:
-            averaged_params = named_params_list[0]
-        else:
-            averaged_params = deepcopy(named_params_list[0])
-
+    (_, averaged_params) = named_params_list[0]
     for k in averaged_params.keys():
         for i in range(0, len(named_params_list)):
-            if type(named_params_list[0]) is tuple or type(named_params_list[0]) is list:
-                local_sample_number, local_named_params = named_params_list[i]
-            else:
-                local_named_params = named_params_list[i]
-            # logging.debug("aggregating ---- local_sample_number/sum: {}/{}, ".format(
-            #     local_sample_number, sum))
-            w = average_weights_dict_list[i]
-            # w = torch.full_like(local_named_params[k], w).detach()
+            local_sample_number, local_named_params = named_params_list[i]
+            w = local_sample_number / sum
+            logging.debug("aggregating ---- local_sample_number/sum: {}/{}, ".format(
+                local_sample_number, sum))
             if i == 0:
                 averaged_params[k] = (local_named_params[k] * w).type(averaged_params[k].dtype)
             else:
-                averaged_params[k] += (local_named_params[k].to(averaged_params[k].device) * w).type(
-                    averaged_params[k].dtype)
+                averaged_params[k] += (local_named_params[k] * w).type(averaged_params[k].dtype)
     return averaged_params
-
 
 def average_tensors(tensors, weights):
     if isinstance(tensors, list):
@@ -319,32 +156,6 @@ def unflatten(tensors, synced_tensors, shapes):
         pointer += nelement
 
 
-def flatten_model(named_parameters=None, flatten_grad=False, param_list=None):
-    
-    to_concat_w = []
-    to_concat_g = []
-    # if named_parameters is None:
-    #     named_parameters = model.named_parameters()
-
-    for name, param in named_parameters.items():
-        # TODO maybe custom the layers that need to be pruned.
-        if param.dim() in [2, 4]:
-            to_concat_w.append(param.data.view(-1))
-            if flatten_grad:
-                to_concat_g.append(param.grad.data.view(-1))
-
-    all_w = torch.cat(to_concat_w)
-    if flatten_grad:
-        all_g = torch.cat(to_concat_g)
-    else:
-        all_g = None
-    return all_w, all_g 
-
-
-
-
-
-
 """auxiliary."""
 
 
@@ -354,25 +165,6 @@ def recover_device(data, device=None):
     else:
         return data
 
-
-def check_device(data_src, device=None):
-    if device is not None:
-        if data_src.device is not device:
-            return data_src.to(device)
-        else:
-            return data_src
-    else:
-        return data_src
-
-
-def check_type(data_src, type=None):
-    if type is not None:
-        if data_src.type() == type:
-            return data_src
-        else:
-            return data_src.type(type)
-    else:
-        return data_src
 
 
 def deepcopy_model(conf, model):
@@ -384,33 +176,13 @@ def deepcopy_model(conf, model):
     return tmp_model
 
 
-def get_name_params_div(named_parameters1, named_parameters2=None, scalar=1.0):
-    """
-        return named_parameters2 - named_parameters1
-    """
-    if named_parameters2 is not None:
-        common_names = list(set(named_parameters1.keys()).intersection(set(named_parameters2.keys())))
-        named_diff_parameters = {}
-        for key in common_names:
-            named_diff_parameters[key] = get_div_weights(named_parameters1[key],
-                                            weights2=named_parameters2[key])
-    else:
-        named_diff_parameters = {}
-        for key in named_parameters1.keys():
-            named_diff_parameters[key] = get_div_weights(named_parameters1[key],
-                                            scalar=scalar)
-    return named_diff_parameters
-
-
-def get_name_params_sum(named_parameters1, named_parameters2):
-    """
-        return named_parameters2 - named_parameters1
-    """
-    common_names = list(set(named_parameters1.keys()).intersection(set(named_parameters2.keys())))
-    named_diff_parameters = {}
-    for key in common_names:
-        named_diff_parameters[key] = get_sum_weights(named_parameters1[key], named_parameters2[key])
-    return named_diff_parameters
+def get_model_difference(model1, model2):
+    list_of_tensors = []
+    for weight1, weight2 in zip(model1.parameters(),
+                                model2.parameters()):
+        tensor = get_diff_weights(weight1, weight2)
+        list_of_tensors.append(tensor)
+    return list_to_vec(list_of_tensors).norm().item()
 
 
 def get_name_params_difference(named_parameters1, named_parameters2):
@@ -424,93 +196,6 @@ def get_name_params_difference(named_parameters1, named_parameters2):
     return named_diff_parameters
 
 
-def get_name_params_difference_abs(named_parameters1, named_parameters2):
-    """
-        return named_parameters2 - named_parameters1
-    """
-    common_names = list(set(named_parameters1.keys()).intersection(set(named_parameters2.keys())))
-    named_diff_parameters = {}
-    for key in common_names:
-        named_diff_parameters[key] = get_diff_weights_abs(named_parameters1[key], named_parameters2[key])
-    return named_diff_parameters
-
-
-def get_name_params_difference_norm(named_parameters1, named_parameters2, layers_list=None, p=2):
-    """
-        return named_parameters2 - named_parameters1
-    """
-    common_names = list(set(named_parameters1.keys()).intersection(set(named_parameters2.keys())))
-    name_params_difference_norm = {}
-    for name in common_names:
-        if layers_list is None:
-            weight_diff = get_diff_weights(named_parameters1[name], named_parameters2[name])
-            # logging.info(f'name: {name}, weight_diff: {weight_diff}')
-            name_params_difference_norm[name] = weight_diff.norm(p=p)
-        else:
-            for layer in layers_list:
-                if layer in name:
-                    weight_diff = get_diff_weights(named_parameters1[name], named_parameters2[name])
-                    name_params_difference_norm[name] = weight_diff.norm(p=p)
-    return name_params_difference_norm
-
-
-
-def get_tensors_norm(tensors_dict, layers_list=None, p=2):
-    tensors_norm_dict = {}
-
-    try:
-        for name, tensor in tensors_dict.items():
-            if layers_list is None:
-                if tensor is not None:
-                    tensors_norm_dict[name] = tensor.norm(p=p)
-                else:
-                    tensors_norm_dict[name] = None
-            else:
-                for layer in layers_list:
-                    # logging.info("layer in list: {}, get {} in tensor dict".format(
-                    #     layer, name))
-                    if layer in name:
-                        if tensor is not None:
-                            tensors_norm_dict[name] = tensor.norm(p=p)
-                        else:
-                            tensors_norm_dict[name] = None
-    except:
-        logging.info("layers_list: {}, Layer name: {}, tensor.shape: {}, tensor.dtype: {}".format(
-            layers_list, name, tensor.shape, tensor.dtype
-        ))
-    return tensors_norm_dict
-
-
-
-
-def get_div_weights(weights1, weights2=None, scalar=1.0):
-    """ Produce a direction from 'weights1' to 'weights2'."""
-    if weights2 is not None:
-        if isinstance(weights1, list) and isinstance(weights2, list):
-            return [torch.div(w1, w2) for (w1, w2) in zip(weights1, weights2)]
-        elif isinstance(weights1, torch.Tensor) and isinstance(weights2, torch.Tensor):
-            return torch.div(weights1, weights2)
-        else:
-            raise NotImplementedError
-    else:
-        if isinstance(weights1, list):
-            return [w1 / scalar for w1 in weights1]
-        elif isinstance(weights1, torch.Tensor):
-            return  weights1 / scalar
-        else:
-            raise NotImplementedError
-
-
-
-def get_sum_weights(weights1, weights2):
-    """ Produce a direction from 'weights1' to 'weights2'."""
-    if isinstance(weights1, list) and isinstance(weights2, list):
-        return [w2 + w1 for (w1, w2) in zip(weights1, weights2)]
-    elif isinstance(weights1, torch.Tensor) and isinstance(weights2, torch.Tensor):
-        return weights2 + weights1
-    else:
-        raise NotImplementedError
-
 def get_diff_weights(weights1, weights2):
     """ Produce a direction from 'weights1' to 'weights2'."""
     if isinstance(weights1, list) and isinstance(weights2, list):
@@ -521,182 +206,12 @@ def get_diff_weights(weights1, weights2):
         raise NotImplementedError
 
 
-def get_diff_weights_abs(weights1, weights2):
-    """ Produce a direction from 'weights1' to 'weights2'."""
-    if isinstance(weights1, list) and isinstance(weights2, list):
-        return [torch.abs(w2 - w1) for (w1, w2) in zip(weights1, weights2)]
-    elif isinstance(weights1, torch.Tensor) and isinstance(weights2, torch.Tensor):
-        return torch.abs(weights2 - weights1)
-    else:
-        raise NotImplementedError
-
-
-def get_diff_tensor_norm(tensor1, tensor2, p=2):
-    diff = get_diff_weights(tensor1, tensor2)
-    return diff.norm(p=p)
-
-
-
 def get_diff_states(states1, states2):
     """ Produce a direction from 'states1' to 'states2'."""
     return [
         v2 - v1
         for (k1, v1), (k2, v2) in zip(states1.items(), states2.items())
     ]
-
-
-def get_tensor_rotation(tensor1, tensor2):
-    logging.info(tensor1.dtype)
-    logging.info(tensor2.dtype)
-    # print(tensor1.dtype)
-    # print(tensor2.dtype)
-    # return F.cosine_similarity(torch.flatten(tensor1), torch.flatten(tensor2), dim=0)
-    return F.cosine_similarity(tensor1.view(-1), tensor2.view(-1), dim=0)
-
-
-def get_named_tensors_rotation(named_tensors1, named_tensors2, layers_list=None):
-    common_names = list(set(named_tensors1.keys()).intersection(set(named_tensors2.keys())))
-    named_tensors_rotation = {}
-    for name in common_names:
-        if layers_list is None:
-            # print(name)
-            named_tensors_rotation[name] = get_tensor_rotation(named_tensors1[name], named_tensors2[name])
-        else:
-            for layer in layers_list:
-                if layer in name:
-                    # print(name)
-                    named_tensors_rotation[name] = get_tensor_rotation(named_tensors1[name], named_tensors2[name])
-    return named_tensors_rotation
-
-
-
-def calculate_metric_for_named_tensors(
-    cal_func,
-    named_tensors1, named_tensors2=None, layers_list=None, LP_list=None):
-
-    if LP_list is None:
-        if named_tensors2 is not None:
-            metric_for_named_tensors = cal_func(
-                named_tensors1,
-                named_tensors2,
-                layers_list=layers_list,
-            )
-        else:
-            metric_for_named_tensors = cal_func(
-                named_tensors1,
-                layers_list=layers_list,
-            )
-        return metric_for_named_tensors
-    else:
-        assert type(LP_list) is list
-        metric_for_named_tensors_with_LP_dict = {}
-
-        for p in LP_list:
-            if p == 'inf':
-                Lp = float('inf')
-            else:
-                Lp = float(p)
-            if named_tensors2 is not None:
-                metric_for_named_tensors = cal_func(
-                    named_tensors1,
-                    named_tensors2,
-                    layers_list=layers_list,
-                    p=Lp
-                )
-            else:
-                metric_for_named_tensors = cal_func(
-                    named_tensors1,
-                    layers_list=layers_list,
-                    p=Lp
-                )
-            metric_for_named_tensors_with_LP_dict[p] = metric_for_named_tensors
-        return metric_for_named_tensors_with_LP_dict
-
-
-def calculate_metric_for_whole_model(
-    cal_func,
-    named_tensors1, named_tensors2, layers_list=None, LP_list=None):
-
-    common_names = list(set(named_tensors1.keys()).intersection(set(named_tensors2.keys())))
-    list_of_tensors1 = []
-    list_of_tensors2 = []
-
-    for name in common_names:
-        if layers_list is None:
-            # print(name)
-            list_of_tensors1.append(named_tensors1[name]) 
-            list_of_tensors2.append(named_tensors2[name]) 
-        else:
-            for layer in layers_list:
-                if layer in name:
-                    list_of_tensors1.append(named_tensors1[name]) 
-                    list_of_tensors2.append(named_tensors2[name]) 
-
-    merged_tensor1 = list_to_vec(list_of_tensors1)
-    merged_tensor2 = list_to_vec(list_of_tensors2)
-
-    if LP_list is None:
-        metric_for_named_tensors = cal_func(
-            merged_tensor1,
-            merged_tensor2,
-        )
-        return metric_for_named_tensors
-    else:
-        assert type(LP_list) is list
-        metric_for_named_tensors_with_LP_dict = {}
-
-        for p in LP_list:
-            if p == 'inf':
-                Lp = float('inf')
-            else:
-                Lp = float(p)
-            metric_for_named_tensors = cal_func(
-                merged_tensor1,
-                merged_tensor2,
-                p=Lp
-            )
-            metric_for_named_tensors_with_LP_dict[p] = metric_for_named_tensors
-        return metric_for_named_tensors_with_LP_dict
-
-
-def calc_client_divergence(global_model_weights, model_list, p=2, rotation=False):
-    divergence_list = []
-    if rotation:
-        for i, model_i in enumerate(model_list):
-            model_diff_norm1 = calculate_metric_for_whole_model(
-                cal_func=get_tensor_rotation,
-                named_tensors1=global_model_weights,
-                named_tensors2=model_list[i][1],
-                LP_list=None,
-            )
-            divergence_list.append(model_diff_norm1.item())
-            average_divergence = sum(divergence_list) / len(divergence_list)
-            max_divergence = max(divergence_list)
-            min_divergence = min(divergence_list)
-    else:
-        for i, model_i in enumerate(model_list):
-            model_diff_norm1 = calculate_metric_for_whole_model(
-                cal_func=get_diff_tensor_norm,
-                named_tensors1=global_model_weights,
-                named_tensors2=model_list[i][1],
-                LP_list=[p],
-            )
-            divergence_list.append(model_diff_norm1[p].item())
-            average_divergence = sum(divergence_list) / len(divergence_list)
-            max_divergence = max(divergence_list)
-            min_divergence = min(divergence_list)
-
-    return divergence_list, average_divergence, max_divergence, min_divergence
-
-
-
-def get_model_difference(model1, model2, p=2):
-    list_of_tensors = []
-    for weight1, weight2 in zip(model1.parameters(),
-                                model2.parameters()):
-        tensor = get_diff_weights(weight1, weight2)
-        list_of_tensors.append(tensor)
-    return list_to_vec(list_of_tensors).norm(p=p).item()
 
 
 def list_to_vec(weights):
@@ -769,15 +284,6 @@ def apply_gradient(param_groups, state, apply_grad_to_model=True):
 
 
 
-def clear_grad(m):
-    for p in m.parameters():
-        if p.grad is not None:
-            p.grad.detach_()
-            p.grad.zero_()
-
-
-
-
 """dataset related"""
 
 def get_local_num_iterations(local_num, batch_size):
@@ -835,45 +341,7 @@ def get_sum_num_iterations(train_data_local_num_dict, batch_size):
     return sum_num // batch_size
 
 
-def get_num_iterations(train_data_local_num_dict, batch_size, type="default", default=10):
-    """
-        [default, lowest, highest, averaged]  
-    """
-    if type == "default":
-        num_iterations = default
-    elif type == "lowest":
-        num_iterations = get_min_num_iterations(train_data_local_num_dict, batch_size)
-    elif type == "highest":
-        num_iterations = get_max_num_iterations(train_data_local_num_dict, batch_size)
-    elif type == "averaged":
-        num_iterations = get_avg_num_iterations(train_data_local_num_dict, batch_size)
-    else:
-        raise NotImplementedError
-    return num_iterations
 
-
-
-def get_train_batch_data(train_local_iter_dict, dataset_name, train_local, batch_size, drop_last=True):
-    try:
-        train_batch_data = train_local_iter_dict[dataset_name].next()
-        # logging.debug("len(train_batch_data[0]): {}".format(len(train_batch_data[0])))
-        if len(train_batch_data[0]) < batch_size:
-            if drop_last:
-                logging.debug("WARNING: len(train_batch_data[0]): {} < self.args.batch_size: {}".format(
-                    len(train_batch_data[0]), batch_size))
-                logging.debug("Using Drop Last, reinitialize loader.")
-                train_local_iter_dict[dataset_name] = iter(train_local)
-                train_batch_data = train_local_iter_dict[dataset_name].next()
-            else:
-                logging.debug("WARNING: len(train_batch_data[0]): {} < self.args.batch_size: {}".format(
-                    len(train_batch_data[0]), batch_size))
-
-            # logging.debug("train_batch_data[0]: {}".format(train_batch_data[0]))
-            # logging.debug("train_batch_data[0].shape: {}".format(train_batch_data[0].shape))
-    except:
-        train_local_iter_dict[dataset_name] = iter(train_local)
-        train_batch_data = train_local_iter_dict[dataset_name].next()
-    return train_batch_data
 
 
 

@@ -4,10 +4,12 @@ from contextlib import contextmanager
 import threading
 
 import traceback
+from mpi4py import MPI
+
 
 
 @contextmanager
-def raise_MPI_error(MPI):
+def raise_MPI_error():
     import logging
     logging.debug("Debugging, Enter the MPI catch error")
     try:

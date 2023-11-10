@@ -17,12 +17,11 @@ class Metrics(object):
         # self.str_fn = self._get_str_fn(task)
 
 
-    def evaluate(self, loss, output, target, **kwargs):
-        return self.metrics_fn(loss, output, target, **kwargs)
+    def evaluate(self, loss, output, target, **kargs):
+        return self.metrics_fn(loss, output, target, **kargs)
 
 
-    def get_callbacks(self, topks, task,
-                grad_track_config=None, model_dif_track_config=None):
+    def get_callbacks(self, topks, task):
         if task == "classification":
             self.metric_names = ["Acc{}".format(topk) for topk in topks]
             self.metric_names += ["Loss"]
@@ -41,12 +40,6 @@ class Metrics(object):
             self.str_fn = self._ptb_str_fn
         else:
             raise NotImplementedError
-
-        if grad_track_config is not None:
-            pass
-
-        if model_dif_track_config is not None:
-            pass
 
 
 
@@ -82,30 +75,15 @@ class Metrics(object):
     #     else:
     #         raise NotImplementedError
 
-
-    def _classification_metric(self, loss, output, target, **kwargs):
+    def _classification_metric(self, loss, output, target, **kargs):
         """Computes the precision@k for the specified values of k"""
-
-        # if "pred_shift" in kwargs:
-        #     pred_shift = kwargs["pred_shift"]
-        #     prefix_name = "PredShift"
-        #     loss_name = f"{prefix_name}-Loss"
-        #     acc_name = f"{prefix_name}-Acc"
-        # else:
-        #     loss_name = "Loss"
-        #     acc_name = "Acc"
         metric_stat = {}
         metric_stat["Loss"] = loss.item()
-        # metric_stat[loss_name] = loss.item()
 
         maxk = max(self.topks)
         batch_size = target.size(0)
 
         _, pred = output.topk(maxk, 1, True, True)
-        if "pred_shift" in kwargs:
-            pred_shift = kwargs["pred_shift"]
-            pred[pred > pred_shift] = pred[pred > pred_shift] - pred_shift
-
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
@@ -113,11 +91,10 @@ class Metrics(object):
             correct_k = correct[:topk].view(-1).float().sum(0, keepdim=True)
             # res.append(correct_k.mul_(100.0 / batch_size).item())
             metric_stat["Acc{}".format(topk)] = correct_k.mul_(100.0 / batch_size).item()
-            # metric_stat[f"{acc_name}{topk}"] = correct_k.mul_(100.0 / batch_size).item()
+
         return metric_stat
 
-
-    def _stackoverflow_lr_metric(self, loss, output, target, **kwargs):
+    def _stackoverflow_lr_metric(self, loss, output, target, **kargs):
         metric_stat = {}
         metric_stat["Loss"] = loss.item()
         predicted = (output > .5).int()
@@ -129,8 +106,8 @@ class Metrics(object):
         metric_stat["Loss"] = loss.item()
         return metric_stat
 
-    def _ptb_metric(self, loss, output, target, **kwargs):
-        # avg_loss = kwargs["avg_loss"]
+    def _ptb_metric(self, loss, output, target, **kargs):
+        # avg_loss = kargs["avg_loss"]
         metric_stat = {}
         metric_stat["Loss"] = loss.item()
         return metric_stat
@@ -138,7 +115,7 @@ class Metrics(object):
     """
         stat: dict((name, AverageMeter())
     """
-    def _get_ptb_metric_info(self, stat, **kwargs):
+    def _get_ptb_metric_info(self, stat, **kargs):
         metric_info = dict((name, val.avg) for name, val in stat.items())
         metric_info['ppl'] = math.exp(metric_info['Loss'])
         return metric_info

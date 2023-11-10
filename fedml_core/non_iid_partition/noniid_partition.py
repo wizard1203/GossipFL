@@ -39,8 +39,6 @@ def non_iid_partition_with_dirichlet_distribution(label_list,
     # For multiclass labels, the list is ragged and not a numpy array
     N = len(label_list) if task == 'segmentation' else label_list.shape[0]
 
-    logging.debug(f"label_list: {label_list}, {type(label_list)}, {len(label_list)}")
-
     # guarantee the minimum number of sample in each client
     min_size = 0
     while min_size < 10:

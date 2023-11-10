@@ -24,7 +24,6 @@ MPI_PROCESS="${MPI_PROCESS:-$PS_PROCESS}"
 MPI_HOST="${MPI_HOST:-$PS_MPI_HOST}"
 
 export WANDB_CONSOLE=off
-echo $gpu_util_parse
 
 echo ${MPIRUN},${MPI_ARGS},${MPI_PROCESS},${MPI_HOST},
 echo $main_args

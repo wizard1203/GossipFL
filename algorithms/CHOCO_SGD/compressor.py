@@ -122,8 +122,8 @@ class CHOCO_SGDSparsificationCompressor(object):
         assert original_shapes is not None
         assert selected_shapes is not None
         q_values, q_indices = self.compressor_fn.uncompress(
-            values=msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_PARAMS),
-            indices=msg_params.get(MyMessage.MSG_ARG_KEY_MODEL_INDEXES),
+            values=msg_params.get(MyMessage.MSG_ARG_KEY_SPARSE_PARAMS_1),
+            indices=msg_params.get(MyMessage.MSG_ARG_KEY_SPARSE_INDEX_1),
             selected_shapes=selected_shapes,
             original_shapes=original_shapes,
         )

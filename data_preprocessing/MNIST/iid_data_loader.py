@@ -36,7 +36,6 @@ def load_iid_mnist(dataset, data_dir, partition_method,
                             transform=test_transform, download=False)
 
     train_sampler = None
-    test_sampler = None
     shuffle = True
     if client_number > 1:
         train_sampler = data.distributed.DistributedSampler(

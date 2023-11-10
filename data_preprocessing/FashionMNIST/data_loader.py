@@ -5,9 +5,8 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
-from torchvision.datasets import FashionMNIST
 
-from .datasets import FashionMNIST_truncated, FashionMNIST_truncated_WO_reload
+from .datasets import FashionMNIST_truncated
 
 from data_preprocessing.utils.imbalance_data import ImbalancedDatasetSampler
 
@@ -73,43 +72,32 @@ class Cutout(object):
 #     return train_transform, valid_transform
 
 
-def load_fmnist_data(datadir, args=None):
+def load_fmnist_data(datadir):
     # train_transform, test_transform = _data_transforms_fmnist()
     transform = transforms.Compose([transforms.ToTensor()])
 
-    if args.data_efficient_load:
-        fmnist_train_ds = FashionMNIST(datadir,  train=True, download=True, transform=transform)
-        fmnist_test_ds = FashionMNIST(datadir,  train=False, download=True, transform=transform)
-    else:
+    fmnist_train_ds = FashionMNIST_truncated(datadir, train=True, download=True, transform=transform)
+    fmnist_test_ds = FashionMNIST_truncated(datadir, train=False, download=True, transform=transform)
 
-        fmnist_train_ds = FashionMNIST_truncated(datadir, train=True, download=True, transform=transform)
-        fmnist_test_ds = FashionMNIST_truncated(datadir, train=False, download=True, transform=transform)
+    # X_train, y_train = fmnist_train_ds.data, fmnist_train_ds.target
+    # X_test, y_test = fmnist_test_ds.data, fmnist_test_ds.target
 
-    # X_train, y_train = fmnist_train_ds.data, fmnist_train_ds.targets
-    # X_test, y_test = fmnist_test_ds.data, fmnist_test_ds.targets
-
-    X_train, y_train = fmnist_train_ds.data, fmnist_train_ds.targets
-    X_test, y_test = fmnist_test_ds.data, fmnist_test_ds.targets
+    X_train, y_train = fmnist_train_ds.data, fmnist_train_ds.target
+    X_test, y_test = fmnist_test_ds.data, fmnist_test_ds.target
 
     X_train = X_train.data.numpy()
     y_train = y_train.data.numpy()
     X_test = X_test.data.numpy()
     y_test = y_test.data.numpy()
 
-    return (X_train, y_train, X_test, y_test, fmnist_train_ds, fmnist_test_ds)
+    return (X_train, y_train, X_test, y_test)
 
 
-def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
+def partition_data(dataset, datadir, partition, n_nets, alpha):
     logging.info("*********partition data***************")
-    X_train, y_train, X_test, y_test, fmnist_train_ds, fmnist_test_ds = load_fmnist_data(
-        datadir, args)
-
-    # n_train = y_train.shape[0]
+    X_train, y_train, X_test, y_test = load_fmnist_data(datadir)
+    n_train = y_train.shape[0]
     # n_test = X_test.shape[0]
-
-    y_train_np = np.array(y_train)
-    n_train = y_train_np.shape[0]
-
 
     if partition == "homo":
         total_num = n_train
@@ -120,7 +108,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
     elif partition == "hetero":
         min_size = 0
         K = 10
-        N = y_train_np.shape[0]
+        N = y_train.shape[0]
         logging.info("N = " + str(N))
         net_dataidx_map = {}
 
@@ -128,7 +116,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
             idx_batch = [[] for _ in range(n_nets)]
             # for each class in the dataset
             for k in range(K):
-                idx_k = np.where(y_train_np == k)[0]
+                idx_k = np.where(y_train == k)[0]
                 np.random.shuffle(idx_k)
                 proportions = np.random.dirichlet(np.repeat(alpha, n_nets))
                 ## Balance
@@ -153,8 +141,8 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
         if num == 10:
             net_dataidx_map ={i:np.ndarray(0,dtype=np.int64) for i in range(n_nets)}
             for i in range(10):
-                logging.info("y_train_np: {}".format(y_train_np))
-                idx_k = np.where(y_train_np==i)[0]
+                logging.info("y_train: {}".format(y_train))
+                idx_k = np.where(y_train==i)[0]
                 np.random.shuffle(idx_k)
                 split = np.array_split(idx_k, n_nets)
                 for j in range(n_nets):
@@ -175,7 +163,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
                 contain.append(current)
             net_dataidx_map ={i:np.ndarray(0,dtype=np.int64) for i in range(n_nets)}
             for i in range(K):
-                idx_k = np.where(y_train_np==i)[0]
+                idx_k = np.where(y_train==i)[0]
                 np.random.shuffle(idx_k)
                 split = np.array_split(idx_k,times[i])
                 ids=0
@@ -200,7 +188,7 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
         K = 10
         idx_batch = [[] for _ in range(n_nets)]
         for k in range(K):
-            idx_k = np.where(y_train_np == k)[0]
+            idx_k = np.where(y_train == k)[0]
             np.random.shuffle(idx_k)
             proportions = np.array([ tail_prop for _ in range(n_nets)])
             main_clients = np.array([ k + i*K for i in range(n_nets // K)])
@@ -217,17 +205,14 @@ def partition_data(dataset, datadir, partition, n_nets, alpha, args=None):
     if partition == "hetero-fix":
         raise NotImplementedError
     else:
-        traindata_cls_counts = record_net_data_stats(y_train_np, net_dataidx_map)
+        traindata_cls_counts = record_net_data_stats(y_train, net_dataidx_map)
 
-    return X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts, \
-                fmnist_train_ds, fmnist_test_ds
+    return X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts
 
 
 # for centralized training
-def get_dataloader(dataset, datadir, train_bs, test_bs, dataidxs=None, args=None,
-                full_train_dataset=None, full_test_dataset=None):
-    return get_dataloader_FashionMNIST(datadir, train_bs, test_bs, dataidxs, args=args,
-                        full_train_dataset=full_train_dataset, full_test_dataset=full_test_dataset)
+def get_dataloader(dataset, datadir, train_bs, test_bs, dataidxs=None, args=None):
+    return get_dataloader_FashionMNIST(datadir, train_bs, test_bs, dataidxs, args=args)
 
 
 # for local devices
@@ -235,36 +220,24 @@ def get_dataloader_test(dataset, datadir, train_bs, test_bs, dataidxs_train, dat
     return get_dataloader_test_FashionMNIST(datadir, train_bs, test_bs, dataidxs_train, dataidxs_test)
 
 
-def get_dataloader_FashionMNIST(datadir, train_bs, test_bs, dataidxs=None, args=None,
-                        full_train_dataset=None, full_test_dataset=None):
+def get_dataloader_FashionMNIST(datadir, train_bs, test_bs, dataidxs=None, args=None):
+    dl_obj = FashionMNIST_truncated
     # transform = transforms.Compose([transforms.ToTensor()])
     # transform_train, transform_test = _data_transforms_fmnist()
     transform_train = transforms.Compose([transforms.ToTensor()])
     transform_test = transforms.Compose([transforms.ToTensor()])
 
-    if args.data_efficient_load:
-        dl_obj = FashionMNIST_truncated_WO_reload
-        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=transform_train,
-                        full_dataset=full_train_dataset)
-        test_ds = dl_obj(datadir, train=False, transform=transform_test,
-                        full_dataset=full_test_dataset)
-    else:
-        dl_obj = FashionMNIST_truncated
-        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=transform_train, download=True)
-        test_ds = dl_obj(datadir, train=False, transform=transform_test, download=True)
-
-    drop_last = True
-    if args.batch_size > len(train_ds):
-        drop_last = False
+    train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=transform_train, download=True)
+    test_ds = dl_obj(datadir, train=False, transform=transform_test, download=True)
 
     if args.data_sampler in ["imbalance", "decay_imb"]:
         train_sampler = ImbalancedDatasetSampler(args, train_ds, class_num=10)
         train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=(train_sampler is None),
-                                   drop_last=drop_last, sampler=train_sampler)
-        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=drop_last)
+                                   drop_last=True, sampler=train_sampler)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=True)
     else:
-        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=drop_last)
-        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=drop_last)
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=True)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=True)
 
     return train_dl, test_dl
 
@@ -287,14 +260,12 @@ def get_dataloader_test_FashionMNIST(datadir, train_bs, test_bs, dataidxs_train=
 
 
 def load_partition_data_distributed_fmnist(process_id, dataset, data_dir, partition_method, partition_alpha,
-                                            client_number, batch_size, args=None):
-    X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts, \
-        fmnist_train_ds, fmnist_test_ds = partition_data(dataset,
-                                            data_dir,
-                                            partition_method,
-                                            client_number,
-                                            partition_alpha,
-                                            args)
+                                            client_number, batch_size):
+    X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts = partition_data(dataset,
+                                                                                             data_dir,
+                                                                                             partition_method,
+                                                                                             client_number,
+                                                                                             partition_alpha)
     class_num = len(np.unique(y_train))
     logging.info("traindata_cls_counts = " + str(traindata_cls_counts))
     train_data_num = sum([len(net_dataidx_map[r]) for r in range(client_number)])
@@ -324,23 +295,16 @@ def load_partition_data_distributed_fmnist(process_id, dataset, data_dir, partit
 
 def load_partition_data_fmnist(dataset, data_dir, partition_method, partition_alpha, client_number, batch_size,
                                 args=None):
-    X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts, \
-        fmnist_train_ds, fmnist_test_ds = partition_data(dataset,
-                                            data_dir,
-                                            partition_method,
-                                            client_number,
-                                            partition_alpha,
-                                            args)
-
+    X_train, y_train, X_test, y_test, net_dataidx_map, traindata_cls_counts = partition_data(dataset,
+                                                                                             data_dir,
+                                                                                             partition_method,
+                                                                                             client_number,
+                                                                                             partition_alpha)
     class_num = len(np.unique(y_train))
     logging.info("traindata_cls_counts = " + str(traindata_cls_counts))
     train_data_num = sum([len(net_dataidx_map[r]) for r in range(client_number)])
 
-    train_data_global, test_data_global = get_dataloader(
-        dataset, data_dir, batch_size, batch_size, args=args,
-        full_train_dataset=fmnist_train_ds,
-        full_test_dataset=fmnist_test_ds
-    )
+    train_data_global, test_data_global = get_dataloader(dataset, data_dir, batch_size, batch_size, args=args)
     logging.info("train_dl_global number = " + str(len(train_data_global)))
     logging.info("test_dl_global number = " + str(len(test_data_global)))
     test_data_num = len(test_data_global)
@@ -358,10 +322,7 @@ def load_partition_data_fmnist(dataset, data_dir, partition_method, partition_al
 
         # training batch size = 64; algorithms batch size = 32
         train_data_local, test_data_local = get_dataloader(dataset, data_dir, batch_size, batch_size,
-                                                dataidxs, args=args,
-                                                full_train_dataset=fmnist_train_ds,
-                                                full_test_dataset=fmnist_test_ds
-                                            )
+                                                 dataidxs, args=args)
         logging.info("client_index = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
             client_index, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_index] = train_data_local

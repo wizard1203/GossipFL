@@ -85,6 +85,7 @@ class TopKCompressor():
     def compress(self, tensor, name=None, sigma_scale=2.5, ratio=0.05):
         start = time.time()
         with torch.no_grad():
+ 
             # top-k solution
             numel = tensor.numel()
             k = max(int(numel * ratio), 1)

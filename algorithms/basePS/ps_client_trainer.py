@@ -2,7 +2,7 @@ import logging
 import copy
 
 from compression.compression import compressors
-
+from utils.timer import Timer
 from utils.tracker import RuntimeTracker
 from utils.metrics import Metrics
 from utils.data_utils import (
@@ -11,6 +11,7 @@ from utils.data_utils import (
     get_avg_num_iterations
 )
 from utils.context import (
+    raise_MPI_error,
     raise_error_without_process,
     get_lock,
 )
@@ -18,28 +19,23 @@ from utils.context import (
 class PSTrainer(object):
 
     def __init__(self, client_index, train_data_local_dict, train_data_local_num_dict, test_data_local_dict,
-                train_data_num, device, args, model_trainer, perf_timer, metrics):
-        self.args = args
+                 train_data_num, device, args, model_trainer, timer, metrics):
         self.client_index = client_index
         self.train_data_local_dict = train_data_local_dict
         self.train_data_local_num_dict = train_data_local_num_dict
         self.test_data_local_dict = test_data_local_dict
         self.all_train_data_num = train_data_num
         self.train_local = self.train_data_local_dict[client_index]
-        if self.args.data_save_memory_mode:
-            self.train_local_iter = None
-        else:
-            self.train_local_iter = iter(self.train_local)
+        self.train_local_iter = iter(self.train_local)
         self.local_sample_number = self.train_data_local_num_dict[client_index]
-        logging.info(f"Initializing client: {self.client_index}"+
-                    f" len(train_local) (local default iterations): {len(self.train_local)} local_sample_number: {self.local_sample_number}")
-        # logging.info("self.local_sample_number: {}".format(self.local_sample_number))
+        logging.info("len(self.train_local): {}".format(len(self.train_local)))
+        logging.info("self.local_sample_number: {}".format(self.local_sample_number))
         # assert len(self.train_local) == self.local_sample_number // args.batch_size
         self.test_local = self.test_data_local_dict[client_index]
 
         self.device = device
-        self.local_num_iterations, self.global_num_iterations = \
-            self.get_num_iterations()
+        self.args = args
+        self.local_num_iterations, self.global_num_iterations = self.get_num_iterations()
         self.trainer = model_trainer
         # =============================================
         self.compressor = compressors[args.compression]()
@@ -85,21 +81,16 @@ class PSTrainer(object):
     def update_model_with_grad(self):
         self.trainer.update_model_with_grad()
 
-    def clear_buffer(self):
-        # if self.args.momentum > 0:
-            # self.trainer.clear_momentum()
-        if self.args.clear_buffer:
-            self.trainer.clear_optim_buffer()
 
     def get_train_batch_data(self):
         try:
             train_batch_data = self.train_local_iter.next()
-            # logging.debug("len(train_batch_data[0]): {}".format(len(train_batch_data[0])))
-            # if len(train_batch_data[0]) < self.args.batch_size:
-            #     logging.debug("WARNING: len(train_batch_data[0]): {} < self.args.batch_size: {}".format(
-            #         len(train_batch_data[0]), self.args.batch_size))
-            #     logging.debug("train_batch_data[0]: {}".format(train_batch_data[0]))
-            #     logging.debug("train_batch_data[0].shape: {}".format(train_batch_data[0].shape))
+            logging.debug("len(train_batch_data[0]): {}".format(len(train_batch_data[0])))
+            if len(train_batch_data[0]) < self.args.batch_size:
+                logging.debug("WARNING: len(train_batch_data[0]): {} < self.args.batch_size: {}".format(
+                    len(train_batch_data[0]), self.args.batch_size))
+                logging.debug("train_batch_data[0]: {}".format(train_batch_data[0]))
+                logging.debug("train_batch_data[0].shape: {}".format(train_batch_data[0].shape))
         except:
             self.train_local_iter = iter(self.train_local)
             train_batch_data = self.train_local_iter.next()
@@ -108,18 +99,17 @@ class PSTrainer(object):
 
     def update_dataset(self, client_index, epoch):
         """
-            No need to change dataset in real worker process, i.e. args.instantiate_all = True
+            No need to change dataset in real worker process.
         """
-        if self.args.instantiate_all:
-            assert self.client_index == client_index
-        self.client_index = client_index
-        self.train_local = self.train_data_local_dict[client_index]
-        self.local_sample_number = self.train_data_local_num_dict[client_index]
-        self.test_local = self.test_data_local_dict[client_index]
+        assert self.client_index == client_index
+        # self.client_index = client_index
+        # self.train_local = self.train_data_local_dict[client_index]
+        # self.local_sample_number = self.train_data_local_num_dict[client_index]
+        # self.test_local = self.test_data_local_dict[client_index]
 
         with raise_error_without_process():
-            # logging.debug("type(self.train_local): {}".format(type(self.train_local)))
-            # logging.debug("type(self.train_local.sampler): {}".format(type(self.train_local.sampler)))
+            logging.debug("type(self.train_local): {}".format(type(self.train_local)))
+            logging.debug("type(self.train_local.sampler): {}".format(type(self.train_local.sampler)))
             # This is used for distributed sampler
             self.train_local.sampler.set_epoch(epoch)
 
@@ -235,16 +225,14 @@ class PSTrainer(object):
         return compressed_grads, grad_indexes
 
 
-    def train_one_step(self, global_other_params, epoch=None, iteration=None, end_of_epoch=False,
-            tracker=None, metrics=None
-        ):
+    def train_one_step(self, epoch=None, iteration=None, tracker=None, metrics=None):
         if self.args.if_get_diff:
             previous_model = copy.deepcopy(self.trainer.get_model_params())
         # train_batch_data = next(self.train_local_iter)
         train_batch_data = self.get_train_batch_data()
         loss, pred, target = self.trainer.train_one_step(
             train_batch_data, device=self.device, args=self.args,
-            epoch=epoch, iteration=iteration, end_of_epoch=end_of_epoch,
+            epoch=epoch, iteration=iteration,
             tracker=tracker, metrics=metrics)
 
         if self.args.if_get_diff:
@@ -255,14 +243,12 @@ class PSTrainer(object):
         return compressed_weights_diff, model_indexes, self.local_sample_number 
 
 
-    def infer_bw_one_step(self, global_other_params, epoch=None, iteration=None, end_of_epoch=False,
-            tracker=None, metrics=None
-        ):
+    def infer_bw_one_step(self, epoch=None, iteration=None, tracker=None, metrics=None):
         # train_batch_data = next(self.train_local_iter)
         train_batch_data = self.get_train_batch_data()
         loss, pred, target = self.trainer.infer_bw_one_step(
             train_batch_data, device=self.device, args=self.args, 
-            epoch=epoch, iteration=iteration, end_of_epoch=end_of_epoch,
+            epoch=epoch, iteration=iteration,
             tracker=tracker, metrics=metrics)
 
         compressed_grads, grad_indexes = self.get_model_grads()

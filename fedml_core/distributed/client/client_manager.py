@@ -1,7 +1,7 @@
 import logging
 from abc import abstractmethod
 
-
+from mpi4py import MPI
 
 from ..communication.message import Message
 from ..communication.mpi.com_manager import MpiCommunicationManager
@@ -12,10 +12,6 @@ from ..communication.observer import Observer
 class ClientManager(Observer):
 
     def __init__(self, args, comm=None, rank=0, size=0, backend="MPI"):
-
-        if args.mode == "distributed":
-            from mpi4py import MPI
-
         self.args = args
         self.size = size
         self.rank = rank
